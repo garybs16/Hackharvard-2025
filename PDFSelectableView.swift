@@ -23,6 +23,7 @@ struct PDFSelectableView: PlatformViewRepresentable {
         context.coordinator.pdfView = v
         return v
     }
+
     func updateUIView(_ v: PDFView, context: Context) {
         v.document = document
     }
@@ -34,6 +35,7 @@ struct PDFSelectableView: PlatformViewRepresentable {
         context.coordinator.pdfView = v
         return v
     }
+
     func updateNSView(_ v: PDFView, context: Context) {
         v.document = document
     }
