@@ -1,12 +1,18 @@
 // backend.js
 // ReadAR backend (Node.js + Express, ESM)
 // Run:  node backend.js
-// Deps: npm i express cors node-fetch dotenv
+// Deps:
+//   npm i express cors node-fetch dotenv multer pdf-parse pdfkit pdf-lib
 
 import express from "express";
 import cors from "cors";
 import fetch from "node-fetch";
 import dotenv from "dotenv";
+import multer from "multer";
+import pdfParse from "pdf-parse";
+import PDFDocument from "pdfkit";
+import { PDFDocument as PDFLibDocument, rgb, StandardFonts } from "pdf-lib";
+
 dotenv.config();
 
 const app = express();
@@ -14,7 +20,10 @@ const PORT = process.env.PORT || 5055;
 const ORIGINS = (process.env.CORS_ORIGINS || "*").split(",");
 
 app.use(cors({ origin: ORIGINS, credentials: false }));
-app.use(express.json());
+app.use(express.json({ limit: "10mb" }));
+
+// Use in-memory uploads (no temp files on disk)
+const upload = multer({ storage: multer.memoryStorage() });
 
 // ------------------------------------------------------
 // Health
@@ -97,8 +106,7 @@ app.get("/api/explain", async (req, res) => {
 
 // ------------------------------------------------------
 // Syllabify (no external lib; simple heuristic)
-// Input: { text: string }
-// Output: { tokens: [{ raw, syllables: [] }] }
+// Input: { text: string } -> { tokens: [{ raw, syllables: [] }] }
 // ------------------------------------------------------
 const tokenRegex = /[A-Za-z]+(?:'[A-Za-z]+)?|[0-9]+|[^\w\s]/g;
 
@@ -107,9 +115,7 @@ function splitTokens(text) {
 }
 
 function syllabifyWord(word) {
-  // Very simple fallback heuristic:
-  // split before vowels, but keep consonant clusters with the vowel that follows
-  // This is not perfect, but works offline without extra deps.
+  // Very simple heuristic:
   const parts = word.match(/[^aeiouyAEIOUY]*[aeiouyAEIOUY]+(?:[^aeiouyAEIOUY]|$)/g);
   if (parts && parts.length) return parts.map(p => p.trim()).filter(Boolean);
   return [word];
@@ -128,7 +134,7 @@ app.post("/api/syllabify", (req, res) => {
 
 // ------------------------------------------------------
 // Readability (Flesch Reading Ease + FK Grade)
-// Input: { text }
+// Input: { text } -> metrics
 // ------------------------------------------------------
 function readabilityMetrics(text) {
   const sentences = Math.max(1, (text.match(/[.!?]+/g) || []).length || 1);
@@ -219,13 +225,97 @@ function clampNumber(v, min, max) {
   return Math.min(max, Math.max(min, n));
 }
 
-// ------------------------------------------------------
+// ======================================================
+// ============= PDF ENDPOINTS (Node libraries) =========
+// ======================================================
+
+// 1) Extract text from an uploaded PDF
+//    POST /api/pdf/extract   (form-data: file=<PDF>)
+//    -> { numPages, text, pages: [{page, text}] }
+app.post("/api/pdf/extract", upload.single("file"), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: "missing file" });
+  try {
+    const result = await pdfParse(req.file.buffer);
+    const text = result.text || "";
+    // pdf-parse doesn't split per page reliably in all cases; we provide full text and page count.
+    res.json({
+      numPages: result.numpages || 0,
+      text
+    });
+  } catch (e) {
+    res.status(500).json({ error: "failed_to_extract_pdf", detail: String(e) });
+  }
+});
+
+// 2) Generate a simple PDF from text lines
+//    POST /api/pdf/generate   JSON: { title?: string, lines: string[] }
+//    -> application/pdf (binary)
+app.post("/api/pdf/generate", async (req, res) => {
+  const title = (req.body?.title || "ReadAR Document").toString();
+  const lines = Array.isArray(req.body?.lines) ? req.body.lines : [];
+  try {
+    const doc = new PDFDocument({ margin: 50, size: "LETTER" });
+
+    // set headers for file download
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename="readar.pdf"`);
+
+    doc.fontSize(20).text(title, { align: "center" });
+    doc.moveDown();
+
+    doc.fontSize(12);
+    for (const line of lines) {
+      doc.text(line);
+    }
+
+    doc.end();
+    doc.pipe(res);
+  } catch (e) {
+    res.status(500).json({ error: "failed_to_generate_pdf", detail: String(e) });
+  }
+});
+
+// 3) Stamp/Watermark an uploaded PDF (non-destructive overlay)
+//    POST /api/pdf/stamp   (form-data: file=<PDF>, text=<string>)
+//    -> application/pdf (binary)
+app.post("/api/pdf/stamp", upload.single("file"), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: "missing file" });
+  const stampText = (req.body?.text || "ReadAR").toString();
+
+  try {
+    const pdfDoc = await PDFLibDocument.load(req.file.buffer);
+    const font = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+
+    const pages = pdfDoc.getPages();
+    for (const page of pages) {
+      const { width, height } = page.getSize();
+
+      // Draw a semi-transparent watermark across the middle
+      page.drawText(stampText, {
+        x: width * 0.15,
+        y: height * 0.5,
+        size: 36,
+        font,
+        color: rgb(0.2, 0.2, 0.2),
+        opacity: 0.25,
+        rotate: { type: "degrees", angle: -15 }
+      });
+    }
+
+    const outBytes = await pdfDoc.save();
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename="stamped.pdf"`);
+    res.end(Buffer.from(outBytes));
+  } catch (e) {
+    res.status(500).json({ error: "failed_to_stamp_pdf", detail: String(e) });
+  }
+});
+
 // Root
-// ------------------------------------------------------
 app.get("/", (_req, res) => {
   res.json({
     name: "ReadAR API",
-    version: "1.0.0",
+    version: "1.1.0",
     docs_hint: "Hit /api/* endpoints directly",
     endpoints: [
       "GET  /api/health",
@@ -237,7 +327,10 @@ app.get("/", (_req, res) => {
       "POST /api/focus/suggest { lines, current_index }",
       "POST /api/narrate { text, voice_hint?, rate? }",
       "GET  /api/preferences/:key",
-      "PUT  /api/preferences/:key { font_size?, line_spacing?, theme? }"
+      "PUT  /api/preferences/:key { font_size?, line_spacing?, theme? }",
+      "POST /api/pdf/extract (form-data: file=<PDF>)",
+      "POST /api/pdf/generate { title?, lines: [] }",
+      "POST /api/pdf/stamp (form-data: file=<PDF>, text=<string>)"
     ]
   });
 });
