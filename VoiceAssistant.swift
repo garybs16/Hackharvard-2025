@@ -9,9 +9,10 @@ final class VoiceAssistant: NSObject, ObservableObject {
     @Published var isSpeaking = false
 
     private let synth = AVSpeechSynthesizer()
-    private var queue: [String] = []
+    private var queue: [String] = []   // reserved for future multi-paragraph
     private var currentIndex: Int = -1
 
+    // ASR (voice commands)
     private let recognizer = SFSpeechRecognizer()
     private var audioEngine: AVAudioEngine?
     private var request: SFSpeechAudioBufferRecognitionRequest?
@@ -23,15 +24,16 @@ final class VoiceAssistant: NSObject, ObservableObject {
         try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .spokenAudio, options: [.duckOthers])
     }
 
-    // MARK: - TTS
+    // MARK: - TTS controls
     func read(_ text: String) {
         stop()
         queue = [text]
         currentIndex = 0
-        let u = AVSpeechUtterance(string: text)
-        u.voice = AVSpeechSynthesisVoice(language: Locale.current.identifier)
-        u.rate  = AVSpeechUtteranceDefaultSpeechRate * 0.9
-        synth.speak(u)
+
+        let utt = AVSpeechUtterance(string: text)
+        utt.voice = AVSpeechSynthesisVoice(language: Locale.current.identifier) // e.g. "en-US"
+        utt.rate  = AVSpeechUtteranceDefaultSpeechRate * 0.9
+        synth.speak(utt)
         isSpeaking = true
     }
 
@@ -64,7 +66,7 @@ final class VoiceAssistant: NSObject, ObservableObject {
         isSpeaking = false
     }
 
-    // MARK: - Voice commands
+    // MARK: - Voice commands (pause/resume/next/previous/stop)
     func startListening() {
         SFSpeechRecognizer.requestAuthorization { status in
             guard status == .authorized else { return }
@@ -90,8 +92,8 @@ final class VoiceAssistant: NSObject, ObservableObject {
 
         guard let input = engine.inputNode else { return }
         let format = input.outputFormat(forBus: 0)
-        input.installTap(onBus: 0, bufferSize: 1024, format: format) { [weak self] buf, _ in
-            self?.request?.append(buf)
+        input.installTap(onBus: 0, bufferSize: 1024, format: format) { [weak self] buffer, _ in
+            self?.request?.append(buffer)
         }
 
         task = recognizer?.recognitionTask(with: req) { [weak self] result, error in
@@ -108,13 +110,13 @@ final class VoiceAssistant: NSObject, ObservableObject {
         try? engine.start()
     }
 
-    private func handleCommand(_ t: String) {
+    private func handleCommand(_ text: String) {
         switch true {
-        case t.contains("pause"): toggle()
-        case t.contains("resume"), t.contains("continue"): toggle()
-        case t.contains("stop"): stop()
-        case t.contains("next"): readNextParagraph()
-        case t.contains("previous"), t.contains("back"): readPreviousParagraph()
+        case text.contains("pause"): toggle()
+        case text.contains("resume"), text.contains("continue"): toggle()
+        case text.contains("stop"): stop()
+        case text.contains("next"): readNextParagraph()
+        case text.contains("previous"), text.contains("back"): readPreviousParagraph()
         default: break
         }
     }
