@@ -5,7 +5,6 @@ struct ReadARLandingApp: App {
     var body: some Scene {
         WindowGroup {
             LandingScreen()
-                .preferredColorScheme(.light)
         }
     }
 }
@@ -19,53 +18,50 @@ struct LandingScreen: View {
         ScrollView {
             VStack(spacing: 24) {
 
-                // App Icon
+                // Icon
                 ZStack {
-                    RoundedRectangle(cornerRadius: 22, style: .continuous)
-                        .fill(
-                            LinearGradient(
-                                colors: [.indigo, .purple, .pink],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
+                    RoundedRectangle(cornerRadius: 22)
+                        .fill(LinearGradient(
+                            gradient: Gradient(colors: [.indigo, .purple, .pink]),
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ))
                         .frame(width: 92, height: 92)
                         .shadow(color: .purple.opacity(0.25), radius: 22, y: 10)
 
                     EyeGlyph()
                         .frame(width: 36, height: 36)
-                        .foregroundStyle(.white)
+                        .foregroundColor(.white)
                         .shadow(radius: 2)
                 }
                 .padding(.top, 12)
 
-                // Title + Tagline
+                // Title
                 VStack(spacing: 8) {
                     Text("ReadAR")
                         .font(.system(size: 40, weight: .black, design: .rounded))
-                        .foregroundStyle(.indigo)
+                        .foregroundColor(.indigo)
 
                     Text("Helping every mind read clearly — one word at a time.")
                         .font(.title3.weight(.semibold))
-                        .foregroundStyle(.secondary)
+                        .foregroundColor(.secondary)
                         .multilineTextAlignment(.center)
                 }
 
-                // Badges row
+                // Badges
                 HStack(spacing: 12) {
-                    PillBadge(color: .indigo,    label: "Dyslexia",   symbol: "brain.head.profile")
-                    PillBadge(color: .pink,      label: "ADHD",       symbol: "circle.hexagongrid")
-                    PillBadge(color: .green,     label: "AI-Powered", symbol: "sparkles")
+                    PillBadge(color: .indigo, label: "Dyslexia", symbol: "brain.head.profile")
+                    PillBadge(color: .pink, label: "ADHD", symbol: "circle.hexagongrid")
+                    PillBadge(color: .green, label: "AI-Powered", symbol: "sparkles")
                 }
-                .padding(.top, 2)
 
-                // Feature card
+                // Features
                 FeatureCardVisual()
 
-                // CTA button
-                Button {
+                // CTA Button (safe syntax)
+                Button(action: {
                     showPreview = true
-                } label: {
+                }) {
                     HStack(spacing: 10) {
                         Text("Start Reading Experience")
                             .font(.headline)
@@ -74,33 +70,35 @@ struct LandingScreen: View {
                     }
                     .padding(.vertical, 14)
                     .padding(.horizontal, 24)
-                    .foregroundStyle(.white)
+                    .foregroundColor(.white)
                     .background(
                         Capsule().fill(
-                            LinearGradient(colors: [.indigo, .purple, .pink],
-                                           startPoint: .topLeading, endPoint: .bottomTrailing)
+                            LinearGradient(
+                                gradient: Gradient(colors: [.indigo, .purple, .pink]),
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
                         )
                         .shadow(color: .purple.opacity(0.25), radius: 14, y: 8)
                     )
                 }
-                .buttonStyle(.plain)
-                .padding(.bottom, 4)
                 .sheet(isPresented: $showPreview) {
                     ReaderPreview()
-                        .presentationDetents([.medium, .large])
                 }
 
                 Text("Demo UI — fewer words, more visuals.")
                     .font(.footnote)
-                    .foregroundStyle(.secondary)
+                    .foregroundColor(.secondary)
             }
             .padding(24)
-            .frame(maxWidth: 780)
             .frame(maxWidth: .infinity)
         }
         .background(
-            LinearGradient(colors: [.white, .indigo.opacity(0.05)],
-                           startPoint: .top, endPoint: .bottom)
+            LinearGradient(
+                gradient: Gradient(colors: [.white, .indigo.opacity(0.05)]),
+                startPoint: .top,
+                endPoint: .bottom
+            )
             .ignoresSafeArea()
         )
     }
@@ -120,7 +118,7 @@ struct PillBadge: View {
         }
         .padding(.vertical, 8)
         .padding(.horizontal, 12)
-        .foregroundStyle(color)
+        .foregroundColor(color)
         .background(
             Capsule()
                 .fill(color.opacity(0.12))
@@ -129,14 +127,13 @@ struct PillBadge: View {
     }
 }
 
-// Feature Card
 struct FeatureCardVisual: View {
     let items: [(Color, String, String)] = [
-        (.blue,   "Eye tracking", "Dynamic text highlighting"),
-        (.purple, "Focus modes",  "Line • Word • Syllable"),
-        (.green,  "Word lookup",  "Definitions & speak"),
-        (.orange, "Narration",    "Read-aloud sync"),
-        (.teal,   "Accessibility","Dyslexia & ADHD")
+        (.blue, "Eye tracking", "Dynamic text highlight"),
+        (.purple, "Focus modes", "Line • Word • Syllable"),
+        (.green, "Word lookup", "Tap to define / speak"),
+        (.orange, "Narration", "Read-aloud sync"),
+        (.teal, "Accessibility", "Dyslexia & ADHD")
     ]
 
     var body: some View {
@@ -145,18 +142,15 @@ struct FeatureCardVisual: View {
                 .font(.headline)
 
             VStack(spacing: 14) {
-                ForEach(items.indices, id: \.self) { i in
-                    FeatureBullet(color: items[i].0,
-                                  title: items[i].1,
-                                  subtitle: items[i].2)
+                ForEach(0..<items.count, id: \.self) { i in
+                    FeatureBullet(color: items[i].0, title: items[i].1, subtitle: items[i].2)
                 }
             }
         }
         .padding(20)
         .background(
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .fill(.ultraThinMaterial)
-                .overlay(RoundedRectangle(cornerRadius: 22).stroke(.white.opacity(0.6), lineWidth: 1))
+            RoundedRectangle(cornerRadius: 22)
+                .fill(Color(.systemBackground).opacity(0.8))
                 .shadow(color: .black.opacity(0.06), radius: 20, y: 10)
         )
     }
@@ -176,44 +170,43 @@ struct FeatureBullet: View {
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(title).font(.subheadline.weight(.semibold))
-                Text(subtitle).font(.caption).foregroundStyle(.secondary)
+                Text(subtitle).font(.caption).foregroundColor(.secondary)
             }
             Spacer(minLength: 0)
         }
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 18)
+                .fill(Color.white.opacity(0.75))
+        )
     }
 }
 
-// MARK: - Reader Preview (demo only)
+// MARK: - Reader Preview (demo-only)
 
 struct ReaderPreview: View {
-    @State private var highlightIndex: Int = 0
+    @State private var highlightIndex = 0
     private let lines = [
         "Spatial reading with dynamic line highlight.",
-        "Tap words to see a definition popup.",
-        "Syllable mode adds separators.",
+        "Tap a line to focus it visually.",
+        "Syllable view available in full app.",
         "Adjust font and spacing for comfort."
     ]
 
     var body: some View {
         VStack(spacing: 18) {
-            RoundedRectangle(cornerRadius: 12)
-                .fill(.thinMaterial)
-                .frame(height: 6)
-                .padding(.top, 10)
-                .opacity(0.6)
-
             Text("Reading Preview")
                 .font(.title3.weight(.semibold))
 
             VStack(alignment: .leading, spacing: 10) {
-                ForEach(lines.indices, id: \.self) { i in
+                ForEach(0..<lines.count, id: \.self) { i in
                     Text(lines[i])
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.vertical, 10)
                         .padding(.horizontal, 12)
                         .background(
                             RoundedRectangle(cornerRadius: 10)
-                                .fill(i == highlightIndex ? Color.yellow.opacity(0.25) : .clear)
+                                .fill(i == highlightIndex ? Color.yellow.opacity(0.28) : .clear)
                         )
                         .onTapGesture { highlightIndex = i }
                 }
@@ -221,38 +214,35 @@ struct ReaderPreview: View {
             .padding(16)
             .background(
                 RoundedRectangle(cornerRadius: 18)
-                    .fill(.white.opacity(0.85))
+                    .fill(Color.white.opacity(0.9))
             )
             .padding(.horizontal)
 
             Spacer()
         }
         .padding()
-        .background(
-            LinearGradient(colors: [.white, .indigo.opacity(0.05)],
-                           startPoint: .top, endPoint: .bottom)
-        )
     }
 }
 
-// MARK: - Eye glyph
+// MARK: - Eye Glyph (vector icon)
 
 struct EyeGlyph: View {
     var body: some View {
         ZStack {
-            EyeOutline().stroke(style: StrokeStyle(lineWidth: 1.8, lineCap: .round, lineJoin: .round))
-            Circle().fill(.white).frame(width: 24, height: 24)
+            EyeOutline().stroke(lineWidth: 1.8)
+            Circle().fill(Color.white).frame(width: 24, height: 24)
         }
     }
 }
+
 struct EyeOutline: Shape {
     func path(in rect: CGRect) -> Path {
         var p = Path()
         let w = rect.width, h = rect.height
         let a = CGPoint(x: 0.05*w, y: 0.5*h)
-        let b = CGPoint(x: 0.5*w,  y: 0.1*h)
+        let b = CGPoint(x: 0.5*w, y: 0.1*h)
         let c = CGPoint(x: 0.95*w, y: 0.5*h)
-        let d = CGPoint(x: 0.5*w,  y: 0.9*h)
+        let d = CGPoint(x: 0.5*w, y: 0.9*h)
         p.move(to: a)
         p.addQuadCurve(to: c, control: b)
         p.addQuadCurve(to: a, control: d)
