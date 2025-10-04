@@ -1,9 +1,5 @@
 import SwiftUI
 
-// ===============================
-// ReadAR – Landing + Backend Hook
-// ===============================
-
 @main
 struct ReadARLandingApp: App {
     var body: some Scene {
@@ -11,17 +7,7 @@ struct ReadARLandingApp: App {
             LandingScreen()
                 .preferredColorScheme(.light)
         }
-        #if os(visionOS)
-        .windowStyle(.volumetric)
-        #endif
     }
-}
-
-// MARK: - Config
-
-enum ReadARConfig {
-    // If your backend runs elsewhere, replace 127.0.0.1 with that IP/host.
-    static let apiBase = URL(string: "http://127.0.0.1:5055")!
 }
 
 // MARK: - Landing Screen
@@ -33,7 +19,7 @@ struct LandingScreen: View {
         ScrollView {
             VStack(spacing: 24) {
 
-                // App Icon (floating gradient)
+                // App Icon
                 ZStack {
                     RoundedRectangle(cornerRadius: 22, style: .continuous)
                         .fill(
@@ -53,7 +39,7 @@ struct LandingScreen: View {
                 }
                 .padding(.top, 12)
 
-                // Title + Tagline (short)
+                // Title + Tagline
                 VStack(spacing: 8) {
                     Text("ReadAR")
                         .font(.system(size: 40, weight: .black, design: .rounded))
@@ -65,7 +51,7 @@ struct LandingScreen: View {
                         .multilineTextAlignment(.center)
                 }
 
-                // Badges row (less text, more visual)
+                // Badges row
                 HStack(spacing: 12) {
                     PillBadge(color: .indigo,    label: "Dyslexia",   symbol: "brain.head.profile")
                     PillBadge(color: .pink,      label: "ADHD",       symbol: "circle.hexagongrid")
@@ -73,7 +59,7 @@ struct LandingScreen: View {
                 }
                 .padding(.top, 2)
 
-                // Feature card that mirrors your Figma bullets w/ colored dots
+                // Feature card
                 FeatureCardVisual()
 
                 // CTA button
@@ -100,7 +86,7 @@ struct LandingScreen: View {
                 .buttonStyle(.plain)
                 .padding(.bottom, 4)
                 .sheet(isPresented: $showPreview) {
-                    ReaderPreview() // mini “experience” so judges see flow
+                    ReaderPreview()
                         .presentationDetents([.medium, .large])
                 }
 
@@ -143,14 +129,14 @@ struct PillBadge: View {
     }
 }
 
-// Visual “Key Features” card with dot bullets (safer layout via LazyVGrid for wider SDK support)
+// Feature Card
 struct FeatureCardVisual: View {
     let items: [(Color, String, String)] = [
-        (.blue,   "Eye tracking simulation", "Dynamic text highlighting"),
-        (.purple, "Multiple focus modes",    "Full • Line • Word • Syllable"),
-        (.green,  "Interactive word lookup", "Definitions & pronunciation"),
-        (.orange, "Voice narration",         "Adjustable reading speed"),
-        (.teal,   "Accessibility modes",     "Dyslexia & ADHD presets")
+        (.blue,   "Eye tracking", "Dynamic text highlighting"),
+        (.purple, "Focus modes",  "Line • Word • Syllable"),
+        (.green,  "Word lookup",  "Definitions & speak"),
+        (.orange, "Narration",    "Read-aloud sync"),
+        (.teal,   "Accessibility","Dyslexia & ADHD")
     ]
 
     var body: some View {
@@ -158,8 +144,7 @@ struct FeatureCardVisual: View {
             Text("Key Features:")
                 .font(.headline)
 
-            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())],
-                      spacing: 14) {
+            VStack(spacing: 14) {
                 ForEach(items.indices, id: \.self) { i in
                     FeatureBullet(color: items[i].0,
                                   title: items[i].1,
@@ -195,22 +180,17 @@ struct FeatureBullet: View {
             }
             Spacer(minLength: 0)
         }
-        .padding(12)
-        .background(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .fill(.white.opacity(0.75))
-        )
     }
 }
 
-// MARK: - Reader Preview + real definition hook
+// MARK: - Reader Preview (demo only)
 
 struct ReaderPreview: View {
     @State private var highlightIndex: Int = 0
     private let lines = [
         "Spatial reading with dynamic line highlight.",
-        "Tap any word to define it and hear it aloud.",
-        "Syllable mode adds subtle separators.",
+        "Tap words to see a definition popup.",
+        "Syllable mode adds separators.",
         "Adjust font and spacing for comfort."
     ]
 
@@ -225,120 +205,37 @@ struct ReaderPreview: View {
             Text("Reading Preview")
                 .font(.title3.weight(.semibold))
 
-            ReaderDemoBlock(lines: lines, highlightIndex: $highlightIndex)
-                .padding(.horizontal)
+            VStack(alignment: .leading, spacing: 10) {
+                ForEach(lines.indices, id: \.self) { i in
+                    Text(lines[i])
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.vertical, 10)
+                        .padding(.horizontal, 12)
+                        .background(
+                            RoundedRectangle(cornerRadius: 10)
+                                .fill(i == highlightIndex ? Color.yellow.opacity(0.25) : .clear)
+                        )
+                        .onTapGesture { highlightIndex = i }
+                }
+            }
+            .padding(16)
+            .background(
+                RoundedRectangle(cornerRadius: 18)
+                    .fill(.white.opacity(0.85))
+            )
+            .padding(.horizontal)
 
             Spacer()
         }
         .padding()
-        .background(LinearGradient(colors: [.white, .indigo.opacity(0.05)],
-                                   startPoint: .top, endPoint: .bottom))
-    }
-}
-
-struct ReaderDemoBlock: View {
-    let lines: [String]
-    @Binding var highlightIndex: Int
-    @State private var showingDefinition = false
-    @State private var definitionText = "Loading…"
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            ForEach(lines.indices, id: \.self) { i in
-                HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    // Simple word buttons (tap → define)
-                    ForEach(lines[i].split(separator: " ").map(String.init), id: \.self) { w in
-                        Button {
-                            Task {
-                                definitionText = "Loading…"
-                                if let def = await DefinitionService.shared.define(w) {
-                                    definitionText = "“\(def.word)” — \(def.definition)"
-                                } else {
-                                    definitionText = "No definition found."
-                                }
-                                showingDefinition = true
-                            }
-                        } label: {
-                            Text(w)
-                                .font(.body)
-                                .foregroundStyle(.primary)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                    Spacer(minLength: 0)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.vertical, 10)
-                .padding(.horizontal, 12)
-                .background(
-                    RoundedRectangle(cornerRadius: 10)
-                        .fill(i == highlightIndex ? Color.yellow.opacity(0.25) : .clear)
-                )
-                .onTapGesture { highlightIndex = i }
-            }
-        }
-        .padding(16)
         .background(
-            RoundedRectangle(cornerRadius: 18)
-                .fill(.white.opacity(0.85))
+            LinearGradient(colors: [.white, .indigo.opacity(0.05)],
+                           startPoint: .top, endPoint: .bottom)
         )
-        .sheet(isPresented: $showingDefinition) {
-            VStack(alignment: .leading, spacing: 12) {
-                Text("Definition")
-                    .font(.title2.weight(.bold))
-                Text(definitionText)
-                    .font(.title3)
-                Button("Close") { showingDefinition = false }
-                    .padding(.top, 8)
-            }
-            .padding(24)
-            .presentationDetents([.medium])
-        }
     }
 }
 
-// MARK: - Backend API service (calls your Node server)
-
-struct DefinitionDTO: Decodable {
-    let word: String
-    let definition: String
-}
-
-final class DefinitionService {
-    static let shared = DefinitionService()
-    private init() {}
-
-    func define(_ word: String) async -> DefinitionDTO? {
-        await fetch(endpoint: "define", q: word)
-    }
-    func explain(_ sentence: String) async -> DefinitionDTO? {
-        await fetch(endpoint: "explain", q: sentence)
-    }
-
-    private func fetch(endpoint: String, q: String) async -> DefinitionDTO? {
-        // Build URL: apiBase + /api/<endpoint>?q=...
-        let url = ReadARConfig.apiBase
-            .appendingPathComponent("api")
-            .appendingPathComponent(endpoint)
-
-        var comps = URLComponents(url: url, resolvingAgainstBaseURL: false)
-        comps?.queryItems = [URLQueryItem(name: "q", value: q)]
-
-        guard let finalURL = comps?.url else { return nil }
-
-        do {
-            var req = URLRequest(url: finalURL)
-            req.timeoutInterval = 8
-            let (data, resp) = try await URLSession.shared.data(for: req)
-            guard let http = resp as? HTTPURLResponse, http.statusCode == 200 else { return nil }
-            return try JSONDecoder().decode(DefinitionDTO.self, from: data)
-        } catch {
-            return nil
-        }
-    }
-}
-
-// MARK: - Eye glyph (for the icon)
+// MARK: - Eye glyph
 
 struct EyeGlyph: View {
     var body: some View {
