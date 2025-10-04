@@ -4,18 +4,11 @@ import Foundation
 struct HealthResponse: Codable { let ok: Bool }
 
 // MARK: - Features
-struct Feature: Codable {
-    let color: String      // hex string, e.g. "#3b82f6"
-    let title: String
-    let subtitle: String
-}
+struct Feature: Codable { let color: String; let title: String; let subtitle: String }
 struct FeaturesResponse: Codable { let items: [Feature] }
 
 // MARK: - Define / Explain
-struct DefineResponse: Codable {
-    let word: String
-    let definition: String
-}
+struct DefineResponse: Codable { let word: String; let definition: String }
 
 // MARK: - Syllabify
 struct SyllabifyToken: Codable { let raw: String; let syllables: [String] }
