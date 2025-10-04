@@ -1,5 +1,9 @@
 import SwiftUI
 
+#if os(visionOS)
+import RealityKit
+#endif
+
 @main
 struct ReadARLandingApp: App {
     var body: some Scene {
@@ -18,23 +22,10 @@ struct LandingScreen: View {
         ScrollView {
             VStack(spacing: 24) {
 
-                // Icon
-                ZStack {
-                    RoundedRectangle(cornerRadius: 22)
-                        .fill(LinearGradient(
-                            gradient: Gradient(colors: [.indigo, .purple, .pink]),
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        ))
-                        .frame(width: 92, height: 92)
-                        .shadow(color: .purple.opacity(0.25), radius: 22, x: 0, y: 10) // fixed: add x
-
-                    EyeGlyph()
-                        .frame(width: 36, height: 36)
-                        .foregroundColor(.white)
-                        .shadow(radius: 2)
-                }
-                .padding(.top, 12)
+                // 3D Icon (RealityKit on visionOS) with 2D fallback elsewhere
+                RealityHeader()
+                    .frame(width: 120, height: 120)
+                    .padding(.top, 12)
 
                 // Title
                 VStack(spacing: 8) {
@@ -58,15 +49,11 @@ struct LandingScreen: View {
                 // Features
                 FeatureCardVisual()
 
-                // CTA Button (safe syntax)
-                Button(action: {
-                    showPreview = true
-                }) {
+                // CTA Button
+                Button(action: { showPreview = true }) {
                     HStack(spacing: 10) {
-                        Text("Start Reading Experience")
-                            .font(.headline)
-                        Image(systemName: "sparkles")
-                            .imageScale(.medium)
+                        Text("Start Reading Experience").font(.headline)
+                        Image(systemName: "sparkles").imageScale(.medium)
                     }
                     .padding(.vertical, 14)
                     .padding(.horizontal, 24)
@@ -79,7 +66,7 @@ struct LandingScreen: View {
                                 endPoint: .bottomTrailing
                             )
                         )
-                        .shadow(color: .purple.opacity(0.25), radius: 14, x: 0, y: 8) // fixed: add x
+                        .shadow(color: .purple.opacity(0.25), radius: 14, x: 0, y: 8)
                     )
                 }
                 .sheet(isPresented: $showPreview) {
@@ -103,6 +90,93 @@ struct LandingScreen: View {
         )
     }
 }
+
+// MARK: - Reality Header (3D Eye Badge)
+
+// visionOS: show a simple RealityKit scene
+#if os(visionOS)
+struct RealityHeader: View {
+    var body: some View {
+        RealityView { content in
+            // Root
+            let root = Entity()
+            content.add(root)
+
+            // Background rounded plate (like your gradient card, simplified)
+            let plateMesh = MeshResource.generateBox(size: [0.12, 0.012, 0.12], cornerRadius: 0.02)
+            let plateMat = SimpleMaterial(color: .init(white: 0.95, alpha: 1), roughness: 0.4, isMetallic: false)
+            let plate = ModelEntity(mesh: plateMesh, materials: [plateMat])
+            plate.position = [0, 0, 0]
+            root.addChild(plate)
+
+            // Eye outline (torus)
+            let ring = ModelEntity(
+                mesh: .generateTorus(ringRadius: 0.035, pipeRadius: 0.0025, radialSegments: 40, tubularSegments: 80),
+                materials: [SimpleMaterial(color: .systemIndigo, isMetallic: true)]
+            )
+            ring.position = [0, 0.01, 0]
+            root.addChild(ring)
+
+            // Pupil (small sphere)
+            let pupil = ModelEntity(
+                mesh: .generateSphere(radius: 0.012),
+                materials: [SimpleMaterial(color: .white, isMetallic: true)]
+            )
+            pupil.position = [0, 0.012, 0]
+            root.addChild(pupil)
+
+            // Simple light rig
+            let lightEntity = Entity()
+            var directional = DirectionalLightComponent()
+            directional.intensity = 4000
+            directional.isRealWorldProxy = false
+            lightEntity.components.set(directional)
+            lightEntity.orientation = simd_quatf(angle: -.pi/4, axis: SIMD3<Float>(1,0,0))
+            root.addChild(lightEntity)
+
+            // Subtle rotation animation (non-blocking)
+            // Rotation around Y so it feels alive.
+            let duration: TimeInterval = 6
+            let axis = SIMD3<Float>(0, 1, 0)
+            let totalAngle: Float = .pi * 2
+            let animation = FromToByAnimation<simd_quatf>(
+                name: "ringSpin",
+                from: simd_quatf(angle: 0, axis: axis),
+                to: simd_quatf(angle: totalAngle, axis: axis),
+                duration: duration,
+                timing: .easeInOutPaced,
+                bindTarget: .transformRotation(ring)
+            )
+            if let resource = try? AnimationResource.generate(with: animation) {
+                ring.playAnimation(resource, transitionDuration: 0.3, repeats: true)
+            }
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 22))
+        .shadow(color: .purple.opacity(0.25), radius: 22, x: 0, y: 10)
+        .accessibilityLabel("ReadAR 3D Eye")
+    }
+}
+#else
+// Non-visionOS fallback: keep your original 2D icon
+struct RealityHeader: View {
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 22)
+                .fill(LinearGradient(
+                    gradient: Gradient(colors: [.indigo, .purple, .pink]),
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                ))
+                .shadow(color: .purple.opacity(0.25), radius: 22, x: 0, y: 10)
+
+            EyeGlyph()
+                .frame(width: 36, height: 36)
+                .foregroundColor(.white)
+                .shadow(radius: 2)
+        }
+    }
+}
+#endif
 
 // MARK: - Components
 
@@ -151,7 +225,7 @@ struct FeatureCardVisual: View {
         .background(
             RoundedRectangle(cornerRadius: 22)
                 .fill(Color(.systemBackground).opacity(0.8))
-                .shadow(color: .black.opacity(0.06), radius: 20, x: 0, y: 10) // fixed: add x
+                .shadow(color: .black.opacity(0.06), radius: 20, x: 0, y: 10)
         )
     }
 }
