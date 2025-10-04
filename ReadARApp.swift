@@ -1,494 +1,293 @@
-// ReadAR – AI-Powered Spatial Reading Assistant (visionOS MVP)
-// HackHarvard 2025
-// ---------------------------------------------------------
-// This is a minimal, demo-ready visionOS SwiftUI project skeleton
-// focusing on: line highlight, syllable mode, TTS, word-tap lookup (stub),
-// gaze-driven focus via SwiftUI's focus system, and simple file import.
-// PDF parsing is stubbed behind feature flags; for the hackathon, stick to .txt
-// or paste text.
-// ---------------------------------------------------------
-// Project structure (single-file demo; split into files in Xcode):
-// - ReadARApp: App entry
-// - Models: ReaderSettings, ReaderState, syllable/linguistics helpers
-// - Services: SpeechService, DefinitionService (stub), PDFService (stub)
-// - Views: ContentView, ReaderView, LineRow, Toolbar
-// ---------------------------------------------------------
-
 import SwiftUI
-import AVFoundation
-import NaturalLanguage
-import UniformTypeIdentifiers
-
-// MARK: - Models
-
-enum FocusMode: String, CaseIterable, Identifiable {
-    case lineFocus = "Line Focus"
-    case syllable = "Syllable Mode"
-    case plain = "Plain"
-    var id: String { rawValue }
-}
-
-struct ReaderSettings {
-    var focusMode: FocusMode = .lineFocus
-    var fontSize: CGFloat = 20
-    var lineSpacing: CGFloat = 8
-    var backgroundColor: Color = Color(white: 0.06)
-    var foregroundColor: Color = .white
-    var highlightColor: Color = Color.yellow.opacity(0.25)
-    var showTimestamps: Bool = false
-}
-
-final class ReaderState: ObservableObject {
-    @Published var text: String = SampleText.lorem
-    @Published var lines: [String] = []
-    @Published var focusedLineIndex: Int? = nil
-    @Published var selectedWord: String? = nil
-    @Published var settings = ReaderSettings()
-    @Published var isSpeaking: Bool = false
-    @Published var showDefinitionSheet: Bool = false
-    @Published var importError: String? = nil
-
-    init() {
-        recalcLines()
-    }
-
-    func recalcLines() {
-        // Simple line split – in a real app, shape by layout width using TextLayout
-        lines = text
-            .replacingOccurrences(of: "\r\n", with: "\n")
-            .components(separatedBy: "\n")
-            .flatMap { $0.isEmpty ? [""] : [$0] }
-    }
-}
-
-// MARK: - Services
-
-final class SpeechService: NSObject, ObservableObject, AVSpeechSynthesizerDelegate {
-    private let synthesizer = AVSpeechSynthesizer()
-    @Published var isSpeaking: Bool = false
-
-    override init() {
-        super.init()
-        synthesizer.delegate = self
-    }
-
-    func speak(_ text: String, lang: String? = nil) {
-        stop()
-        let utterance = AVSpeechUtterance(string: text)
-        if let lang = lang, AVSpeechSynthesisVoice.speechVoices().contains(where: { $0.language == lang }) {
-            utterance.voice = AVSpeechSynthesisVoice(language: lang)
-        }
-        utterance.rate = 0.44
-        utterance.pitchMultiplier = 1.0
-        synthesizer.speak(utterance)
-        isSpeaking = true
-    }
-
-    func stop() {
-        if synthesizer.isSpeaking { synthesizer.stopSpeaking(at: .immediate) }
-        isSpeaking = false
-    }
-
-    // MARK: AVSpeechSynthesizerDelegate
-    func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {
-        DispatchQueue.main.async { self.isSpeaking = false }
-    }
-}
-
-struct DefinitionResult { let word: String; let definition: String }
-
-final class DefinitionService {
-    // Stub: returns a simple heuristic definition; replace with OpenAI/Dictionary API in prod
-    func define(_ word: String, locale: Locale = .current) async -> DefinitionResult {
-        let lower = word.lowercased()
-        let def: String
-        switch lower {
-        case "adhd": def = "Attention-Deficit/Hyperactivity Disorder; affects attention and impulse control.";
-        case "dyslexia": def = "A learning difference affecting reading and spelling.";
-        default:
-            def = "No dictionary connected in MVP. Meaning of ‘\(word)’ depends on context."
-        }
-        return DefinitionResult(word: word, definition: def)
-    }
-}
-
-// Optional stub for PDF parsing in future; on visionOS, prefer text import for MVP
-enum PDFService {
-    static func extractText(from url: URL) throws -> String {
-        // TODO: integrate PDFKit if available on target; fallback to CoreGraphics text extraction
-        // For MVP, we decline and advise using .txt
-        throw NSError(domain: "ReadAR", code: 1, userInfo: [NSLocalizedDescriptionKey: "PDF import not enabled in MVP. Please use .txt."])
-    }
-}
-
-// MARK: - Linguistics Utilities
-
-enum Linguistics {
-    static func syllabify(_ word: String) -> [String] {
-        // Heuristic syllable split using hyphenation; not perfect but demo-friendly
-        let ns = word as NSString
-        var pieces: [String] = []
-        var index = ns.length
-        let locale = CFLocaleCopyCurrent()
-        while index > 0 {
-            let breakIndex = CFStringGetHyphenationLocationBeforeIndex(ns, index, CFRange(location: 0, length: ns.length), 0, locale, nil)
-            if breakIndex == kCFNotFound { break }
-            let part = ns.substring(with: NSRange(location: breakIndex, length: index - breakIndex))
-            pieces.insert(part, at: 0)
-            index = breakIndex
-        }
-        if index > 0 { pieces.insert(ns.substring(to: index), at: 0) }
-        return pieces.isEmpty ? [word] : pieces
-    }
-}
-
-// MARK: - Views
 
 @main
-struct ReadARApp: App {
-    @StateObject private var state = ReaderState()
-    @StateObject private var speech = SpeechService()
-    private let defService = DefinitionService()
-
+struct ReadARLandingApp: App {
     var body: some Scene {
-        WindowGroup("ReadAR") {
-            ContentView()
-                .environmentObject(state)
-                .environmentObject(speech)
-                .preferredColorScheme(.dark)
+        WindowGroup {
+            LandingScreen()
+                .preferredColorScheme(.light)
         }
+        #if os(visionOS)
         .windowStyle(.volumetric)
+        #endif
     }
 }
 
-struct ContentView: View {
-    @EnvironmentObject var state: ReaderState
-    @EnvironmentObject var speech: SpeechService
-    @State private var isImporterPresented = false
-    @State private var importerTypes: [UTType] = [.plainText] // Add .pdf later if supported
+// MARK: - Landing Screen
 
-    var body: some View {
-        VStack(spacing: 0) {
-            ToolbarView(onImport: { isImporterPresented = true }, onSpeakToggle: speakToggle, onClear: clearText)
-            Divider().opacity(0.3)
-            ReaderView()
-        }
-        .background(state.settings.backgroundColor.ignoresSafeArea())
-        .fileImporter(isPresented: $isImporterPresented, allowedContentTypes: importerTypes) { result in
-            switch result {
-            case .success(let url):
-                do {
-                    if url.startAccessingSecurityScopedResource() { defer { url.stopAccessingSecurityScopedResource() } }
-                    if url.conforms(to: .plainText) {
-                        let txt = try String(contentsOf: url, encoding: .utf8)
-                        state.text = txt; state.recalcLines()
-                    } else if url.conforms(to: .pdf) {
-                        // Disabled for MVP – show message
-                        throw NSError(domain: "ReadAR", code: 2, userInfo: [NSLocalizedDescriptionKey: "PDF import disabled in MVP. Use a .txt file."])
-                    }
-                } catch {
-                    state.importError = error.localizedDescription
-                }
-            case .failure(let error):
-                state.importError = error.localizedDescription
-            }
-        }
-        .alert("Import Error", isPresented: Binding(get: { state.importError != nil }, set: { _ in state.importError = nil })) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text(state.importError ?? "")
-        }
-    }
-
-    private func speakToggle() {
-        if speech.isSpeaking { speech.stop() } else {
-            let line = currentLineText()
-            speech.speak(line.isEmpty ? state.text : line)
-        }
-    }
-
-    private func clearText() { state.text = ""; state.recalcLines() }
-
-    private func currentLineText() -> String {
-        guard let idx = state.focusedLineIndex, idx < state.lines.count else { return "" }
-        return state.lines[idx]
-    }
-}
-
-struct ToolbarView: View {
-    @EnvironmentObject var state: ReaderState
-    @EnvironmentObject var speech: SpeechService
-
-    var onImport: () -> Void
-    var onSpeakToggle: () -> Void
-    var onClear: () -> Void
-
-    var body: some View {
-        HStack(spacing: 16) {
-            Text("ReadAR")
-                .font(.system(size: 26, weight: .bold))
-                .foregroundColor(.white)
-            Spacer()
-            Picker("Mode", selection: $state.settings.focusMode) {
-                ForEach(FocusMode.allCases) { mode in
-                    Text(mode.rawValue).tag(mode)
-                }
-            }
-            .pickerStyle(.segmented)
-            .frame(width: 420)
-
-            HStack(spacing: 8) {
-                Label("Font", systemImage: "textformat.size")
-                Slider(value: $state.settings.fontSize, in: 14...40)
-                    .frame(width: 180)
-            }
-
-            HStack(spacing: 8) {
-                Label("Spacing", systemImage: "line.3.horizontal")
-                Slider(value: $state.settings.lineSpacing, in: 4...24)
-                    .frame(width: 180)
-            }
-
-            Button(action: onSpeakToggle) {
-                Label(speech.isSpeaking ? "Stop" : "Read Aloud", systemImage: speech.isSpeaking ? "stop.circle" : "play.circle")
-            }
-
-            Button(action: onImport) { Label("Import", systemImage: "tray.and.arrow.down") }
-            Button(role: .destructive, action: onClear) { Label("Clear", systemImage: "trash") }
-        }
-        .padding(16)
-        .background(.ultraThinMaterial)
-    }
-}
-
-struct ReaderView: View {
-    @EnvironmentObject var state: ReaderState
-    @EnvironmentObject var speech: SpeechService
-    @FocusState private var focusIndex: Int?
-
+struct LandingScreen: View {
     var body: some View {
         ScrollView {
-            LazyVStack(alignment: .leading, spacing: state.settings.lineSpacing) {
-                ForEach(state.lines.indices, id: \.self) { idx in
-                    LineRow(index: idx, text: state.lines[idx], highlighted: focusIndex == idx)
-                        .focusable(true) // visionOS focus engine reacts to eye gaze + pointer/tap
-                        .focused($focusIndex, equals: idx)
-                        .onFocusChange { isFocused in
-                            if isFocused { state.focusedLineIndex = idx }
-                        }
+            VStack(spacing: 24) {
+
+                // App Icon
+                ZStack {
+                    RoundedRectangle(cornerRadius: 22, style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                colors: [.indigo, .purple, .pink],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .frame(width: 90, height: 90)
+                        .shadow(color: .purple.opacity(0.25), radius: 20, y: 10)
+
+                    EyeGlyph()
+                        .frame(width: 36, height: 36)
+                        .foregroundStyle(.white)
+                        .shadow(radius: 2)
                 }
+                .padding(.top, 12)
+
+                // Title & Tagline (short)
+                VStack(spacing: 6) {
+                    Text("ReadAR")
+                        .font(.system(size: 36, weight: .heavy, design: .rounded))
+                        .foregroundStyle(.indigo)
+                        .tracking(0.5)
+
+                    Text("Helping every mind read clearly.")
+                        .font(.title3.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                }
+
+                // Badges
+                HStack(spacing: 10) {
+                    Badge(color: .indigo.opacity(0.12), stroke: .indigo.opacity(0.25), textColor: .indigo, icon: "brain.head.profile", label: "Dyslexia")
+                    Badge(color: .pink.opacity(0.12), stroke: .pink.opacity(0.25), textColor: .pink, icon: "circle.hexagongrid", label: "ADHD")
+                    Badge(color: .green.opacity(0.12), stroke: .green.opacity(0.25), textColor: .green, icon: "sparkles", label: "AI")
+                }
+                .padding(.top, 2)
+
+                // Feature Card (visual, minimal text)
+                FeatureCard()
+
+                // CTA
+                NavigationButton()
+                    .padding(.bottom, 8)
+
+                Text("Demo UI — fewer words, more visuals.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
             }
-            .padding(24)
+            .padding(20)
+            .frame(maxWidth: 740)
+            .frame(maxWidth: .infinity)
         }
-        .onChange(of: state.settings.focusMode) { _ in
-            // When mode changes, keep current focus consistent
-            if let idx = state.focusedLineIndex { focusIndex = idx }
-        }
-        .onAppear {
-            if focusIndex == nil { focusIndex = 0; state.focusedLineIndex = 0 }
-        }
+        .background(
+            LinearGradient(
+                colors: [.white, .indigo.opacity(0.05)],
+                startPoint: .top, endPoint: .bottom
+            )
+            .ignoresSafeArea()
+        )
     }
 }
 
-struct LineRow: View {
-    @EnvironmentObject var state: ReaderState
-    @State private var showPopover = false
+// MARK: - Components
 
-    let index: Int
-    let text: String
-    let highlighted: Bool
+struct Badge: View {
+    var color: Color
+    var stroke: Color
+    var textColor: Color
+    var icon: String
+    var label: String
 
     var body: some View {
-        let bg = highlighted && state.settings.focusMode != .plain ? state.settings.highlightColor : .clear
-
-        VStack(alignment: .leading, spacing: 6) {
-            switch state.settings.focusMode {
-            case .syllable:
-                SyllableLine(text: text)
-            default:
-                WordLine(text: text)
-            }
+        HStack(spacing: 6) {
+            Image(systemName: icon)
+                .imageScale(.small)
+            Text(label)
+                .font(.callout.weight(.semibold))
         }
-        .padding(.vertical, 6)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(bg)
-        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .foregroundStyle(textColor)
+        .padding(.vertical, 8)
+        .padding(.horizontal, 12)
+        .background(
+            RoundedRectangle(cornerRadius: 999, style: .continuous)
+                .fill(color)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 999, style: .continuous)
+                        .stroke(stroke, lineWidth: 1)
+                )
+        )
     }
 }
 
-struct WordLine: View {
-    @EnvironmentObject var state: ReaderState
-    @State private var definition: DefinitionResult? = nil
-    @State private var showDefinition = false
-    private let defService = DefinitionService()
+struct FeatureCard: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Key Features")
+                .font(.headline)
+                .foregroundStyle(.primary)
 
-    let text: String
+            // 2x2 Grid of feature tiles (icons + short labels)
+            Grid(horizontalSpacing: 14, verticalSpacing: 14) {
+                GridRow {
+                    FeatureTile(icon: "viewfinder", title: "Gaze highlight", subtitle: "Line • Word")
+                    FeatureTile(icon: "text.line.first.and.arrowtriangle.forward", title: "Focus modes", subtitle: "Line • Word • Syllable")
+                }
+                GridRow {
+                    FeatureTile(icon: "book.closed", title: "Tap to define", subtitle: "Meaning • Speak")
+                    FeatureTile(icon: "waveform", title: "Voice narration", subtitle: "Sync with focus")
+                }
+            }
+        }
+        .padding(18)
+        .background(
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .fill(.ultraThinMaterial)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 22, style: .continuous)
+                        .strokeBorder(.white.opacity(0.6), lineWidth: 1)
+                )
+                .shadow(color: .black.opacity(0.06), radius: 20, y: 10)
+        )
+    }
+}
+
+struct FeatureTile: View {
+    var icon: String
+    var title: String
+    var subtitle: String
 
     var body: some View {
-        let words = tokenize(text)
-        return Text(AttributedString()) // placeholder to enable Group below
-            .overlay(alignment: .leading) {
-                WrapHStack(spacing: 8, verticalSpacing: 6) {
-                    ForEach(words, id: \.self) { w in
-                        Button(action: { Task { await defineWord(w) } }) {
-                            Text(w)
-                                .font(.system(size: state.settings.fontSize))
-                                .foregroundColor(state.settings.foregroundColor)
-                        }
-                        .buttonStyle(.plain)
-                        .contextMenu {
-                            Button("Define ‘\(w)’") { Task { await defineWord(w) } }
-                            Button("Speak ‘\(w)’") { AVSpeechSynthesizer().speak(AVSpeechUtterance(string: w)) }
-                        }
-                    }
-                }
+        HStack(spacing: 12) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(.gradient(colors: [.indigo.opacity(0.12), .purple.opacity(0.12)]))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .stroke(.white.opacity(0.7), lineWidth: 1)
+                    )
+                    .frame(width: 42, height: 42)
+                Image(systemName: icon)
+                    .foregroundStyle(LinearGradient(colors: [.indigo, .purple], startPoint: .top, endPoint: .bottom))
+                    .imageScale(.large)
             }
-            .sheet(isPresented: $showDefinition) {
-                if let def = definition {
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text(def.word).font(.title.bold())
-                        Text(def.definition).font(.title3)
-                        Button("Close") { showDefinition = false }
-                    }
-                    .padding(24)
-                    .presentationDetents([.medium])
-                }
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.primary)
+                Text(subtitle)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
-    }
-
-    private func tokenize(_ s: String) -> [String] {
-        s.split(whereSeparator: { !$0.isLetter && !$0.isNumber && $0 != "'" })
-            .map(String.init)
-    }
-
-    private func defineWord(_ w: String) async {
-        definition = await defService.define(w)
-        showDefinition = true
+            Spacer()
+        }
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(.white.opacity(0.75))
+        )
     }
 }
 
-struct SyllableLine: View {
-    @EnvironmentObject var state: ReaderState
-    let text: String
+struct NavigationButton: View {
+    @State private var pressed = false
+    var body: some View {
+        Button {
+            pressed.toggle()
+        } label: {
+            HStack(spacing: 10) {
+                Text("Start Reading Experience")
+                    .font(.headline)
+                Image(systemName: "arrow.right")
+                    .imageScale(.medium)
+            }
+            .padding(.vertical, 14)
+            .padding(.horizontal, 22)
+            .foregroundStyle(.white)
+            .background(
+                Capsule().fill(
+                    LinearGradient(colors: [.indigo, .purple, .pink], startPoint: .topLeading, endPoint: .bottomTrailing)
+                )
+                .shadow(color: .purple.opacity(0.25), radius: 12, y: 6)
+            )
+            .scaleEffect(pressed ? 0.98 : 1)
+            .animation(.spring(response: 0.35, dampingFraction: 0.8), value: pressed)
+        }
+        .buttonStyle(.plain)
+        .sheet(isPresented: $pressed) {
+            // Placeholder “experience” screen so judges see a flow
+            ReaderPreview()
+                .presentationDetents([.medium, .large])
+        }
+    }
+}
+
+// Minimal preview/placeholder to make the CTA do something visual
+struct ReaderPreview: View {
+    @State private var highlightIndex: Int = 0
+    private let lines = [
+        "Spatial reading with dynamic line highlight.",
+        "Tap words to hear pronunciation and definitions.",
+        "Syllable mode uses a subtle separator.",
+        "Adjust font and spacing for comfort."
+    ]
 
     var body: some View {
-        let words = text.split(separator: " ").map(String.init)
-        WrapHStack(spacing: 8, verticalSpacing: 6) {
-            ForEach(words, id: \.self) { word in
-                let syllables = Linguistics.syllabify(word)
-                HStack(spacing: 0) {
-                    ForEach(Array(syllables.enumerated()), id: \.offset) { i, syl in
-                        Text(syl)
-                            .font(.system(size: state.settings.fontSize))
-                            .foregroundColor(state.settings.foregroundColor)
-                        if i < syllables.count - 1 {
-                            Text("·")
-                                .font(.system(size: state.settings.fontSize * 0.9))
-                                .foregroundColor(.orange)
-                        }
-                    }
+        VStack(spacing: 18) {
+            RoundedRectangle(cornerRadius: 12)
+                .fill(.thinMaterial)
+                .frame(height: 6)
+                .padding(.top, 10)
+                .opacity(0.6)
+
+            Text("Reading Preview")
+                .font(.title3.weight(.semibold))
+
+            VStack(alignment: .leading, spacing: 10) {
+                ForEach(lines.indices, id: \.self) { i in
+                    Text(lines[i])
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.vertical, 8)
+                        .padding(.horizontal, 12)
+                        .background(
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .fill(i == highlightIndex ? Color.yellow.opacity(0.25) : .clear)
+                        )
+                        .onTapGesture { highlightIndex = i }
                 }
             }
+            .padding(16)
+            .background(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .fill(.white.opacity(0.8))
+            )
+            .padding(.horizontal)
+
+            Spacer()
         }
+        .padding()
+        .background(LinearGradient(colors: [.white, .indigo.opacity(0.05)], startPoint: .top, endPoint: .bottom))
     }
 }
 
-// MARK: - Layout helper: wrap HStack
-
-struct WrapHStack<Content: View>: View {
-    var spacing: CGFloat
-    var verticalSpacing: CGFloat
-    @ViewBuilder var content: Content
-
-    init(spacing: CGFloat = 8, verticalSpacing: CGFloat = 8, @ViewBuilder content: () -> Content) {
-        self.spacing = spacing
-        self.verticalSpacing = verticalSpacing
-        self.content = content()
-    }
-
+// MARK: - Simple “eye” glyph (vector)
+struct EyeGlyph: View {
     var body: some View {
-        FlowLayout(spacing: spacing, verticalSpacing: verticalSpacing) { content }
+        ZStack {
+            EyeOutline().stroke(style: StrokeStyle(lineWidth: 1.8, lineCap: .round, lineJoin: .round))
+            Circle().fill(.white).frame(width: 24, height: 24)
+        }
     }
 }
+struct EyeOutline: Shape {
+    func path(in rect: CGRect) -> Path {
+        var p = Path()
+        let w = rect.width, h = rect.height
+        let a = CGPoint(x: 0.05*w, y: 0.5*h)
+        let b = CGPoint(x: 0.5*w,  y: 0.1*h)
+        let c = CGPoint(x: 0.95*w, y: 0.5*h)
+        let d = CGPoint(x: 0.5*w,  y: 0.9*h)
 
-struct FlowLayout<Content: View>: View {
-    let spacing: CGFloat
-    let verticalSpacing: CGFloat
-    @ViewBuilder let content: Content
-
-    init(spacing: CGFloat, verticalSpacing: CGFloat, @ViewBuilder content: () -> Content) {
-        self.spacing = spacing
-        self.verticalSpacing = verticalSpacing
-        self.content = content()
+        p.move(to: a)
+        p.addQuadCurve(to: c, control: b)
+        p.addQuadCurve(to: a, control: d)
+        return p
     }
-
-    var body: some View {
-        GeometryReader { proxy in
-            self.generateContent(in: proxy.size.width)
-        }
-        .frame(maxWidth: .infinity)
-    }
-
-    private func generateContent(in totalWidth: CGFloat) -> some View {
-        var width: CGFloat = 0
-        var rows: [[AnyView]] = [[]]
-
-        let views = contentToArray()
-        for view in views {
-            let viewSize = view.intrinsicSize()
-            if width + viewSize.width + spacing > totalWidth {
-                rows.append([view])
-                width = viewSize.width + spacing
-            } else {
-                rows[rows.count - 1].append(view)
-                width += viewSize.width + spacing
-            }
-        }
-
-        return VStack(alignment: .leading, spacing: verticalSpacing) {
-            ForEach(0..<rows.count, id: \.self) { row in
-                HStack(spacing: spacing) {
-                    ForEach(0..<rows[row].count, id: \.self) { col in
-                        rows[row][col]
-                    }
-                }
-            }
-        }
-    }
-
-    private func contentToArray() -> [AnyView] {
-        let mirror = Mirror(reflecting: content)
-        var arr: [AnyView] = []
-        for child in mirror.children {
-            if let v = child.value as? AnyView {
-                arr.append(v)
-            } else if let v = child.value as? _VariadicView.Children {
-                for c in Mirror(reflecting: v).children {
-                    if let any = c.value as? AnyView { arr.append(any) }
-                }
-            }
-        }
-        return arr
-    }
-}
-
-extension View {
-    func intrinsicSize() -> CGSize {
-        let controller = UIHostingController(rootView: self)
-        let size = controller.sizeThatFits(in: UIView.layoutFittingExpandedSize)
-        return size == .zero ? CGSize(width: 40, height: 24) : size
-    }
-}
-
-// MARK: - Sample Text
-
-enum SampleText {
-    static let lorem = """
-ReadAR – Helping every mind read clearly.
-Tap any word to define it. Toggle Syllable Mode to see separators. Use Read Aloud for TTS.
-
-1) This MVP highlights the line you look at (via the focus system) and supports adjustable font sizes.
-2) Syllable Mode uses hyphenation heuristics (demo-quality).
-3) Import a .txt file to try longer passages.
-"""
 }
