@@ -20,7 +20,7 @@ struct ReadARLandingApp: App {
 // MARK: - Config
 
 enum ReadARConfig {
-    // Change to your LAN/hosted URL when you deploy the backend from file #2.
+    // If your backend runs elsewhere, replace 127.0.0.1 with that IP/host.
     static let apiBase = URL(string: "http://127.0.0.1:5055")!
 }
 
@@ -36,8 +36,13 @@ struct LandingScreen: View {
                 // App Icon (floating gradient)
                 ZStack {
                     RoundedRectangle(cornerRadius: 22, style: .continuous)
-                        .fill(LinearGradient(colors: [.indigo, .purple, .pink],
-                                             startPoint: .topLeading, endPoint: .bottomTrailing))
+                        .fill(
+                            LinearGradient(
+                                colors: [.indigo, .purple, .pink],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
                         .frame(width: 92, height: 92)
                         .shadow(color: .purple.opacity(0.25), radius: 22, y: 10)
 
@@ -62,9 +67,9 @@ struct LandingScreen: View {
 
                 // Badges row (less text, more visual)
                 HStack(spacing: 12) {
-                    PillBadge(color: .indigo,    label: "Dyslexia",     symbol: "brain.head.profile")
-                    PillBadge(color: .pink,      label: "ADHD",         symbol: "circle.hexagongrid")
-                    PillBadge(color: .green,     label: "AI-Powered",   symbol: "sparkles")
+                    PillBadge(color: .indigo,    label: "Dyslexia",   symbol: "brain.head.profile")
+                    PillBadge(color: .pink,      label: "ADHD",       symbol: "circle.hexagongrid")
+                    PillBadge(color: .green,     label: "AI-Powered", symbol: "sparkles")
                 }
                 .padding(.top, 2)
 
@@ -138,19 +143,28 @@ struct PillBadge: View {
     }
 }
 
-// Visual “Key Features” card with dot bullets like your screenshot
+// Visual “Key Features” card with dot bullets (safer layout via LazyVGrid for wider SDK support)
 struct FeatureCardVisual: View {
+    let items: [(Color, String, String)] = [
+        (.blue,   "Eye tracking simulation", "Dynamic text highlighting"),
+        (.purple, "Multiple focus modes",    "Full • Line • Word • Syllable"),
+        (.green,  "Interactive word lookup", "Definitions & pronunciation"),
+        (.orange, "Voice narration",         "Adjustable reading speed"),
+        (.teal,   "Accessibility modes",     "Dyslexia & ADHD presets")
+    ]
+
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text("Key Features:")
                 .font(.headline)
 
-            VStack(alignment: .leading, spacing: 14) {
-                BulletRow(color: .blue,    title: "Eye tracking simulation", subtitle: "Dynamic text highlighting")
-                BulletRow(color: .purple,  title: "Multiple focus modes",    subtitle: "Full • Line • Word • Syllable")
-                BulletRow(color: .green,   title: "Interactive word lookup", subtitle: "Definitions & pronunciation")
-                BulletRow(color: .orange,  title: "Voice narration",         subtitle: "Adjustable reading speed")
-                BulletRow(color: .teal,    title: "Accessibility modes",     subtitle: "Dyslexia & ADHD presets")
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())],
+                      spacing: 14) {
+                ForEach(items.indices, id: \.self) { i in
+                    FeatureBullet(color: items[i].0,
+                                  title: items[i].1,
+                                  subtitle: items[i].2)
+                }
             }
         }
         .padding(20)
@@ -163,7 +177,7 @@ struct FeatureCardVisual: View {
     }
 }
 
-struct BulletRow: View {
+struct FeatureBullet: View {
     var color: Color
     var title: String
     var subtitle: String
@@ -179,7 +193,13 @@ struct BulletRow: View {
                 Text(title).font(.subheadline.weight(.semibold))
                 Text(subtitle).font(.caption).foregroundStyle(.secondary)
             }
+            Spacer(minLength: 0)
         }
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(.white.opacity(0.75))
+        )
     }
 }
 
@@ -277,7 +297,7 @@ struct ReaderDemoBlock: View {
     }
 }
 
-// MARK: - Backend API service (calls file #2)
+// MARK: - Backend API service (calls your Node server)
 
 struct DefinitionDTO: Decodable {
     let word: String
@@ -289,20 +309,25 @@ final class DefinitionService {
     private init() {}
 
     func define(_ word: String) async -> DefinitionDTO? {
-        await fetch(endpoint: "define", word: word)
+        await fetch(endpoint: "define", q: word)
     }
     func explain(_ sentence: String) async -> DefinitionDTO? {
-        await fetch(endpoint: "explain", word: sentence)
+        await fetch(endpoint: "explain", q: sentence)
     }
 
-    private func fetch(endpoint: String, word: String) async -> DefinitionDTO? {
-        let url = ReadARConfig.apiBase.appending(path: "/api/\(endpoint)")
-        var comps = URLComponents(url: url, resolvingAgainstBaseURL: false)!
-        comps.queryItems = [URLQueryItem(name: "q", value: word)]
-        guard let final = comps.url else { return nil }
+    private func fetch(endpoint: String, q: String) async -> DefinitionDTO? {
+        // Build URL: apiBase + /api/<endpoint>?q=...
+        let url = ReadARConfig.apiBase
+            .appendingPathComponent("api")
+            .appendingPathComponent(endpoint)
+
+        var comps = URLComponents(url: url, resolvingAgainstBaseURL: false)
+        comps?.queryItems = [URLQueryItem(name: "q", value: q)]
+
+        guard let finalURL = comps?.url else { return nil }
 
         do {
-            var req = URLRequest(url: final)
+            var req = URLRequest(url: finalURL)
             req.timeoutInterval = 8
             let (data, resp) = try await URLSession.shared.data(for: req)
             guard let http = resp as? HTTPURLResponse, http.statusCode == 200 else { return nil }
