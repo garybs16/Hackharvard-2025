@@ -1,16 +1,28 @@
 import SwiftUI
-import Foundation
+import UniformTypeIdentifiers
+import PDFKit
+import Combine
 
-#if os(visionOS)
-import RealityKit
+#if canImport(AppKit)
+import AppKit
+typealias PlatformImage = NSImage
+#elseif canImport(UIKit)
+import UIKit
+typealias PlatformImage = UIImage
 #endif
 
 @main
 struct ReadARLandingApp: App {
-    var body: some Scene {
+    var body: some SwiftUI.Scene {
         WindowGroup {
             LandingScreen()
         }
+        
+        #if os(macOS) || os(visionOS)
+        WindowGroup("PDF Viewer", id: "pdf-viewer") {
+            PDFViewerWindow()
+        }
+        #endif
     }
 }
 
@@ -18,105 +30,475 @@ struct ReadARLandingApp: App {
 
 struct LandingScreen: View {
     @State private var showPreview = false
-    @State private var backendOnline = false
-    @State private var apiFeatures: [Feature] = []       // Feature is defined in ReadARDataModels.swift
-    @State private var sampleDefinition: String = ""
+    @State private var showDocumentPicker = false
+    @State private var showPDFViewer = false
+    #if os(macOS) || os(visionOS)
+    @Environment(\.openWindow) private var openWindow
+    #endif
 
     var body: some View {
         ScrollView {
-            VStack(spacing: 24) {
+            VStack(spacing: 32) {
 
-                // RealityKit (visionOS) with 2D fallback elsewhere
-                RealityHeader()
-                    .frame(width: 120, height: 120)
-                    .padding(.top, 12)
+                // Hero Section
+                VStack(spacing: 24) {
+                    // Icon with enhanced design
+                    ZStack {
+                        // Outer glow
+                        RoundedRectangle(cornerRadius: 28)
+                            .fill(LinearGradient(
+                                gradient: Gradient(colors: [.indigo.opacity(0.3), .purple.opacity(0.2), .pink.opacity(0.1)]),
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            ))
+                            .frame(width: 120, height: 120)
+                            .blur(radius: 20)
+                        
+                        // Main icon background
+                        RoundedRectangle(cornerRadius: 28)
+                            .fill(LinearGradient(
+                                gradient: Gradient(colors: [.indigo, .purple, .pink]),
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            ))
+                            .frame(width: 100, height: 100)
+                            .shadow(color: .purple.opacity(0.3), radius: 25, x: 0, y: 12)
+                            .shadow(color: .indigo.opacity(0.2), radius: 40, x: 0, y: 20)
 
-                // Title
-                VStack(spacing: 8) {
-                    Text("ReadAR")
-                        .font(.system(size: 40, weight: .black, design: .rounded))
-                        .foregroundColor(.indigo)
+                        EyeGlyph()
+                            .frame(width: 44, height: 44)
+                            .foregroundColor(.white)
+                            .shadow(radius: 4)
+                    }
+                    .padding(.top, 20)
 
-                    Text("Helping every mind read clearly — one word at a time.")
-                        .font(.title3.weight(.semibold))
-                        .foregroundColor(.secondary)
-                        .multilineTextAlignment(.center)
+                    // Title Section with enhanced typography
+                    VStack(spacing: 12) {
+                        Text("ReadAR")
+                            .font(.system(size: 48, weight: .black, design: .rounded))
+                            .foregroundStyle(
+                                LinearGradient(
+                                    gradient: Gradient(colors: [.indigo, .purple]),
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                )
+                            )
+
+                        Text("Helping every mind read clearly — one word at a time.")
+                            .font(.title2.weight(.medium))
+                            .foregroundColor(.secondary)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 8)
+                    }
                 }
+                .padding(.bottom, 8)
 
-                // Backend status
-                Text(backendOnline ? "Backend: Online" : "Backend: Offline")
-                    .font(.footnote.weight(.semibold))
-                    .foregroundStyle(backendOnline ? .green : .red)
-
-                // Badges
-                HStack(spacing: 12) {
+                // Enhanced Badges
+                HStack(spacing: 16) {
                     PillBadge(color: .indigo, label: "Dyslexia", symbol: "brain.head.profile")
                     PillBadge(color: .pink, label: "ADHD", symbol: "circle.hexagongrid")
                     PillBadge(color: .green, label: "AI-Powered", symbol: "sparkles")
                 }
 
-                // Features (API-driven if available; otherwise static fallback)
-                if apiFeatures.isEmpty {
-                    FeatureCardVisual() // static local list
-                } else {
-                    FeatureCardFromAPI(items: apiFeatures) // dynamic from backend
-                }
+                // Features
+                FeatureCardVisual()
 
-                // Sample definition from /api/define
-                if !sampleDefinition.isEmpty {
-                    Text("“focus” → \(sampleDefinition)")
-                        .font(.footnote)
-                        .foregroundColor(.secondary)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal)
-                }
-
-                // CTA Button
-                Button(action: { showPreview = true }) {
-                    HStack(spacing: 10) {
-                        Text("Start Reading Experience").font(.headline)
-                        Image(systemName: "sparkles").imageScale(.medium)
-                    }
-                    .padding(.vertical, 14)
-                    .padding(.horizontal, 24)
-                    .foregroundColor(.white)
-                    .background(
-                        Capsule().fill(
-                            LinearGradient(
-                                gradient: Gradient(colors: [.indigo, .purple, .pink]),
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
+                // Enhanced CTA Button
+                VStack(spacing: 16) {
+                    Button(action: {
+                        showDocumentPicker = true
+                    }) {
+                        HStack(spacing: 12) {
+                            Image(systemName: "doc.fill")
+                                .imageScale(.medium)
+                            Text("Start Reading Experience")
+                                .font(.title3.weight(.bold))
+                            Image(systemName: "arrow.right")
+                                .imageScale(.medium)
+                        }
+                        .padding(.vertical, 18)
+                        .padding(.horizontal, 32)
+                        .foregroundColor(.white)
+                        .background(
+                            Capsule().fill(
+                                LinearGradient(
+                                    gradient: Gradient(colors: [.indigo, .purple, .pink]),
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
                             )
+                            .shadow(color: .purple.opacity(0.4), radius: 20, x: 0, y: 10)
+                            .shadow(color: .indigo.opacity(0.3), radius: 35, x: 0, y: 15)
                         )
-                        .shadow(color: .purple.opacity(0.25), radius: 14, x: 0, y: 8)
-                    )
-                }
-                .sheet(isPresented: $showPreview) {
-                    ReaderPreview()
-                }
+                    }
+                    .fileImporter(
+                        isPresented: $showDocumentPicker,
+                        allowedContentTypes: [.pdf],
+                        allowsMultipleSelection: false
+                    ) { result in
+                        handlePDFSelection(result)
+                    }
+                    
+                    Button("View Demo") {
+                        showPreview = true
+                    }
+                    .font(.headline)
+                    .foregroundColor(.indigo)
+                    .sheet(isPresented: $showPreview) {
+                        ReaderPreview()
+                    }
+                    .sheet(isPresented: $showPDFViewer) {
+                        #if os(iOS)
+                        PDFViewerSheet()
+                        #endif
+                    }
 
-                Text("Demo UI — fewer words, more visuals.")
-                    .font(.footnote)
-                    .foregroundColor(.secondary)
+                    Text("Upload a PDF to start reading with enhanced features.")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary.opacity(0.7))
+                        .padding(.top, 4)
+                        .multilineTextAlignment(.center)
+                }
             }
-            .padding(24)
+            .padding(.horizontal, 28)
+            .padding(.vertical, 20)
             .frame(maxWidth: .infinity)
         }
         .background(
-            LinearGradient(
-                gradient: Gradient(colors: [.white, .indigo.opacity(0.05)]),
-                startPoint: .top,
-                endPoint: .bottom
-            )
+            ZStack {
+                // Primary gradient
+                LinearGradient(
+                    gradient: Gradient(colors: [
+                        .white,
+                        .indigo.opacity(0.03),
+                        .purple.opacity(0.02),
+                        .pink.opacity(0.01)
+                    ]),
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                
+                // Subtle overlay pattern
+                LinearGradient(
+                    gradient: Gradient(colors: [
+                        .clear,
+                        .indigo.opacity(0.02),
+                        .clear
+                    ]),
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            }
             .ignoresSafeArea()
         )
-        .task {
-            // For real device testing (Vision Pro), point to your Mac's LAN IP:
-            // ReadARAPI.baseURL = URL(string: "http://192.168.1.23:5055")!
+    }
+    
+    private func handlePDFSelection(_ result: Result<[URL], Error>) {
+        switch result {
+        case .success(let urls):
+            guard let url = urls.first else { return }
+            
+            // Store the PDF URL globally for the PDF viewer
+            PDFManager.shared.loadPDF(from: url)
+            
+            #if os(macOS) || os(visionOS)
+            // Open the PDF viewer window on macOS and visionOS
+            openWindow(id: "pdf-viewer")
+            #else
+            // On iOS, show a sheet with the PDF viewer
+            showPDFViewer = true
+            #endif
+            
+        case .failure(let error):
+            print("Failed to select PDF: \(error)")
+        }
+    }
+}
 
-            backendOnline = await ReadARAPI.health()
-            apiFeatures = await ReadARAPI.features()
-            sampleDefinition = await ReadARAPI.define("focus")
+// MARK: - PDF Manager
+
+class PDFManager: ObservableObject {
+    static let shared = PDFManager()
+    
+    @Published var pdfDocument: PDFDocument?
+    @Published var pageImages: [PlatformImage] = []
+    @Published var isLoading = false
+    
+    private init() {}
+    
+    func loadPDF(from url: URL) {
+        isLoading = true
+        pageImages = []
+        
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let document = PDFDocument(url: url) else {
+                DispatchQueue.main.async {
+                    self?.isLoading = false
+                }
+                return
+            }
+            
+            let pageCount = document.pageCount
+            var images: [PlatformImage] = []
+            
+            for pageIndex in 0..<pageCount {
+                if let page = document.page(at: pageIndex) {
+                    let pageRect = page.bounds(for: .mediaBox)
+                    let scaleFactor: CGFloat = 2.0 // High resolution
+                    let scaledSize = CGSize(
+                        width: pageRect.width * scaleFactor,
+                        height: pageRect.height * scaleFactor
+                    )
+                    
+                    #if canImport(AppKit)
+                    if let image = page.thumbnail(of: scaledSize, for: .mediaBox) {
+                        images.append(image)
+                    }
+                    #elseif canImport(UIKit)
+                    let image = page.thumbnail(of: scaledSize, for: .mediaBox)
+                    images.append(image)
+                    #endif
+                }
+            }
+            
+            DispatchQueue.main.async {
+                self?.pdfDocument = document
+                self?.pageImages = images
+                self?.isLoading = false
+            }
+        }
+    }
+}
+
+// MARK: - PDF Viewer Window
+
+#if os(macOS) || os(visionOS)
+struct PDFViewerWindow: View {
+    @ObservedObject private var pdfManager = PDFManager.shared
+    @State private var columns = 3
+    @State private var spacing: CGFloat = 20
+    
+    var body: some View {
+        NavigationView {
+            Group {
+                if pdfManager.isLoading {
+                    VStack(spacing: 20) {
+                        ProgressView()
+                            .scaleEffect(1.5)
+                        Text("Loading PDF...")
+                            .font(.title2)
+                            .foregroundColor(.secondary)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    
+                } else if pdfManager.pageImages.isEmpty {
+                    VStack(spacing: 20) {
+                        Image(systemName: "doc.text")
+                            .font(.system(size: 48))
+                            .foregroundColor(.secondary)
+                        Text("No PDF loaded")
+                            .font(.title2)
+                            .foregroundColor(.secondary)
+                        Text("Please upload a PDF from the main window")
+                            .font(.body)
+                            .foregroundColor(.secondary)
+                            .multilineTextAlignment(.center)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    
+                } else {
+                    ScrollView {
+                        LazyVGrid(
+                            columns: Array(repeating: GridItem(.flexible(), spacing: spacing), count: columns),
+                            spacing: spacing
+                        ) {
+                            ForEach(pdfManager.pageImages.indices, id: \.self) { index in
+                                PDFPageView(
+                                    image: pdfManager.pageImages[index],
+                                    pageNumber: index + 1
+                                )
+                            }
+                        }
+                        .padding(spacing)
+                    }
+                }
+            }
+            .navigationTitle(pdfManager.pdfDocument?.documentURL?.lastPathComponent ?? "PDF Viewer")
+            .toolbar {
+                ToolbarItemGroup(placement: .primaryAction) {
+                    HStack {
+                        Text("Columns:")
+                            .font(.caption)
+                        
+                        Picker("Columns", selection: $columns) {
+                            ForEach(1...6, id: \.self) { count in
+                                Text("\(count)").tag(count)
+                            }
+                        }
+                        .pickerStyle(.menu)
+                        .frame(width: 60)
+                    }
+                }
+            }
+        }
+        #if os(macOS)
+        .frame(minWidth: 800, minHeight: 600)
+        #elseif os(visionOS)
+        .frame(minWidth: 1000, minHeight: 700)
+        #endif
+    }
+}
+#else
+struct PDFViewerWindow: View {
+    var body: some View {
+        Text("PDF Viewer not available on this platform")
+    }
+}
+#endif
+
+// MARK: - iOS PDF Viewer Sheet
+
+#if os(iOS)
+struct PDFViewerSheet: View {
+    @ObservedObject private var pdfManager = PDFManager.shared
+    @State private var columns = 2
+    @State private var spacing: CGFloat = 16
+    @Environment(\.dismiss) private var dismiss
+    
+    var body: some View {
+        NavigationView {
+            Group {
+                if pdfManager.isLoading {
+                    VStack(spacing: 20) {
+                        ProgressView()
+                            .scaleEffect(1.5)
+                        Text("Loading PDF...")
+                            .font(.title2)
+                            .foregroundColor(.secondary)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    
+                } else if pdfManager.pageImages.isEmpty {
+                    VStack(spacing: 20) {
+                        Image(systemName: "doc.text")
+                            .font(.system(size: 48))
+                            .foregroundColor(.secondary)
+                        Text("No PDF loaded")
+                            .font(.title2)
+                            .foregroundColor(.secondary)
+                        Text("Please try uploading the PDF again")
+                            .font(.body)
+                            .foregroundColor(.secondary)
+                            .multilineTextAlignment(.center)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    
+                } else {
+                    ScrollView {
+                        LazyVGrid(
+                            columns: Array(repeating: GridItem(.flexible(), spacing: spacing), count: columns),
+                            spacing: spacing
+                        ) {
+                            ForEach(pdfManager.pageImages.indices, id: \.self) { index in
+                                PDFPageView(
+                                    image: pdfManager.pageImages[index],
+                                    pageNumber: index + 1
+                                )
+                            }
+                        }
+                        .padding(spacing)
+                    }
+                }
+            }
+            .navigationTitle(pdfManager.pdfDocument?.documentURL?.lastPathComponent ?? "PDF Viewer")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    HStack {
+                        Text("Columns:")
+                            .font(.caption)
+                        
+                        Picker("Columns", selection: $columns) {
+                            ForEach(1...3, id: \.self) { count in
+                                Text("\(count)").tag(count)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+                        .frame(width: 120)
+                    }
+                }
+                
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Done") {
+                        dismiss()
+                    }
+                    .font(.headline)
+                    .foregroundColor(.indigo)
+                }
+            }
+        }
+    }
+}
+#endif
+
+// MARK: - PDF Page View
+
+struct PDFPageView: View {
+    let image: PlatformImage
+    let pageNumber: Int
+    @State private var isHovered = false
+    
+    var body: some View {
+        VStack(spacing: 12) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(Color.white)
+                    .shadow(
+                        color: .black.opacity(isHovered ? 0.2 : 0.1),
+                        radius: isHovered ? 20 : 12,
+                        x: 0,
+                        y: isHovered ? 8 : 4
+                    )
+                    .scaleEffect(isHovered ? 1.02 : 1.0)
+                    .animation(.easeInOut(duration: 0.2), value: isHovered)
+                
+                #if canImport(AppKit)
+                Image(nsImage: image)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .padding(8)
+                #elseif canImport(UIKit)
+                Image(uiImage: image)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .padding(8)
+                #endif
+            }
+            #if os(macOS)
+            .onHover { hovering in
+                isHovered = hovering
+            }
+            #endif
+            
+            Text("Page \(pageNumber)")
+                .font(.caption)
+                .foregroundColor(.secondary)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(
+                    Capsule()
+                        .fill(.ultraThinMaterial)
+                )
+        }
+        .contextMenu {
+            Button("View Full Size") {
+                // Future: Open full-size view
+            }
+            Button("Extract Text") {
+                // Future: Extract text from this page
+            }
         }
     }
 }
@@ -129,70 +511,102 @@ struct PillBadge: View {
     var symbol: String
 
     var body: some View {
-        HStack(spacing: 6) {
-            Image(systemName: symbol).imageScale(.small)
-            Text(label).font(.callout.weight(.semibold))
+        HStack(spacing: 8) {
+            Image(systemName: symbol)
+                .imageScale(.medium)
+                .foregroundColor(color)
+            Text(label)
+                .font(.callout.weight(.bold))
+                .foregroundColor(color)
         }
-        .padding(.vertical, 8)
-        .padding(.horizontal, 12)
-        .foregroundColor(color)
+        .padding(.vertical, 12)
+        .padding(.horizontal, 16)
         .background(
             Capsule()
-                .fill(color.opacity(0.12))
-                .overlay(Capsule().stroke(color.opacity(0.25), lineWidth: 1))
+                .fill(color.opacity(0.08))
+                .overlay(
+                    Capsule()
+                        .stroke(
+                            LinearGradient(
+                                gradient: Gradient(colors: [
+                                    color.opacity(0.3),
+                                    color.opacity(0.1)
+                                ]),
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            ),
+                            lineWidth: 1.5
+                        )
+                )
+                .shadow(color: color.opacity(0.15), radius: 8, x: 0, y: 4)
         )
     }
 }
 
 struct FeatureCardVisual: View {
-    let items: [(Color, String, String)] = [
-        (.blue, "Eye tracking", "Dynamic text highlight"),
-        (.purple, "Focus modes", "Line • Word • Syllable"),
-        (.green, "Word lookup", "Tap to define / speak"),
-        (.orange, "Narration", "Read-aloud sync"),
-        (.teal, "Accessibility", "Dyslexia & ADHD")
+    let items: [(Color, String, String, String)] = [
+        (.blue, "Eye tracking", "Dynamic text highlight", "eye.fill"),
+        (.purple, "Focus modes", "Line • Word • Syllable", "scope"),
+        (.green, "Word lookup", "Tap to define / speak", "book.fill"),
+        (.orange, "Narration", "Read-aloud sync", "speaker.wave.3.fill"),
+        (.teal, "Accessibility", "Dyslexia & ADHD", "accessibility")
     ]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Key Features:")
-                .font(.headline)
+        VStack(spacing: 24) {
+            // Styled header
+            HStack {
+                Image(systemName: "sparkles")
+                    .font(.title2)
+                    .foregroundColor(.indigo)
+                
+                Text("Key Features")
+                    .font(.system(size: 32, weight: .black, design: .rounded))
+                    .foregroundColor(.indigo)
+                
+                Spacer()
+            }
+            .padding(.horizontal, 8)
 
-            VStack(spacing: 14) {
-                ForEach(items.indices, id: \.self) { i in
-                    FeatureBullet(color: items[i].0, title: items[i].1, subtitle: items[i].2)
+            VStack(spacing: 20) {
+                // First rows with pairs
+                let pairCount = items.count / 2
+                ForEach(0..<pairCount, id: \.self) { row in
+                    HStack(spacing: 20) {
+                        FeatureBullet(
+                            color: items[row * 2].0,
+                            title: items[row * 2].1,
+                            subtitle: items[row * 2].2,
+                            iconName: items[row * 2].3
+                        )
+                        
+                        FeatureBullet(
+                            color: items[row * 2 + 1].0,
+                            title: items[row * 2 + 1].1,
+                            subtitle: items[row * 2 + 1].2,
+                            iconName: items[row * 2 + 1].3
+                        )
+                    }
+                }
+                
+                // Center the last item if odd count
+                if items.count % 2 == 1 {
+                    HStack {
+                        Spacer()
+                        FeatureBullet(
+                            color: items.last!.0,
+                            title: items.last!.1,
+                            subtitle: items.last!.2,
+                            iconName: items.last!.3
+                        )
+                        .frame(maxWidth: 200) // Constrain width for centered item
+                        Spacer()
+                    }
                 }
             }
         }
-        .padding(20)
-        .background(
-            RoundedRectangle(cornerRadius: 22)
-                .fill(Color(.systemBackground).opacity(0.8))
-                .shadow(color: .black.opacity(0.06), radius: 20, x: 0, y: 10)
-        )
-    }
-}
-
-// Dynamic card using API features (hex color requires Color(hex:) in ReadARUIExtensions.swift)
-struct FeatureCardFromAPI: View {
-    let items: [Feature]
-    var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Key Features (API):")
-                .font(.headline)
-
-            VStack(spacing: 14) {
-                ForEach(Array(items.enumerated()), id: \.offset) { _, item in
-                    FeatureBullet(color: Color(hex: item.color), title: item.title, subtitle: item.subtitle)
-                }
-            }
-        }
-        .padding(20)
-        .background(
-            RoundedRectangle(cornerRadius: 22)
-                .fill(Color(.systemBackground).opacity(0.8))
-                .shadow(color: .black.opacity(0.06), radius: 20, x: 0, y: 10)
-        )
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, 12)
     }
 }
 
@@ -200,24 +614,147 @@ struct FeatureBullet: View {
     var color: Color
     var title: String
     var subtitle: String
+    var iconName: String
+    
+    @State private var isShining = false
 
     var body: some View {
-        HStack(alignment: .top, spacing: 12) {
-            Circle()
-                .fill(color)
-                .frame(width: 10, height: 10)
-                .padding(.top, 6)
-
-            VStack(alignment: .leading, spacing: 3) {
-                Text(title).font(.subheadline.weight(.semibold))
-                Text(subtitle).font(.caption).foregroundColor(.secondary)
+        VStack(spacing: 20) {
+            // Metallic Icon with shine animation
+            ZStack {
+                // Base tinted background
+                RoundedRectangle(cornerRadius: 20)
+                    .fill(
+                        LinearGradient(
+                            gradient: Gradient(colors: [
+                                color.opacity(0.15),
+                                color.opacity(0.25),
+                                color.opacity(0.10)
+                            ]),
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .frame(width: 64, height: 64)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 20)
+                            .stroke(
+                                LinearGradient(
+                                    gradient: Gradient(colors: [
+                                        color.opacity(0.4),
+                                        color.opacity(0.2),
+                                        color.opacity(0.1)
+                                    ]),
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                ),
+                                lineWidth: 1.5
+                            )
+                    )
+                    .shadow(color: color.opacity(0.25), radius: 12, x: 0, y: 6)
+                    .shadow(color: color.opacity(0.1), radius: 24, x: 0, y: 12)
+                
+                // SF Symbol Icon with metallic effect
+                Image(systemName: iconName)
+                    .font(.system(size: 24, weight: .medium))
+                    .foregroundStyle(
+                        LinearGradient(
+                            gradient: Gradient(colors: [
+                                color,
+                                color.opacity(0.7),
+                                color
+                            ]),
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .shadow(color: .white.opacity(0.3), radius: 1, x: 0, y: 1)
+                
+                // Animated shine overlay
+                RoundedRectangle(cornerRadius: 20)
+                    .fill(
+                        LinearGradient(
+                            gradient: Gradient(stops: [
+                                .init(color: .clear, location: 0.0),
+                                .init(color: .white.opacity(0.3), location: 0.4),
+                                .init(color: .white.opacity(0.6), location: 0.5),
+                                .init(color: .white.opacity(0.3), location: 0.6),
+                                .init(color: .clear, location: 1.0)
+                            ]),
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .frame(width: 64, height: 64)
+                    .mask(
+                        Image(systemName: iconName)
+                            .font(.system(size: 24, weight: .medium))
+                    )
+                    .opacity(isShining ? 1.0 : 0.0)
+                    .animation(
+                        Animation.easeInOut(duration: 2.0)
+                            .repeatForever(autoreverses: true)
+                            .delay(Double.random(in: 0...2)),
+                        value: isShining
+                    )
             }
+            .onAppear {
+                isShining = true
+            }
+            
+            // Enhanced Text content
+            VStack(spacing: 10) {
+                Text(title)
+                    .font(.title3.weight(.bold))
+                    .foregroundColor(.primary)
+                    .multilineTextAlignment(.center)
+                
+                Text(subtitle)
+                    .font(.subheadline.weight(.medium))
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            
             Spacer(minLength: 0)
         }
-        .padding(12)
+        .padding(.vertical, 28)
+        .padding(.horizontal, 20)
+        .frame(maxWidth: .infinity, minHeight: 180)
         .background(
-            RoundedRectangle(cornerRadius: 18)
-                .fill(Color.white.opacity(0.75))
+            ZStack {
+                // Main background with enhanced gradient
+                RoundedRectangle(cornerRadius: 28)
+                    .fill(
+                        LinearGradient(
+                            gradient: Gradient(colors: [
+                                color.opacity(0.04),
+                                color.opacity(0.08),
+                                color.opacity(0.03)
+                            ]),
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                
+                // Border with gradient
+                RoundedRectangle(cornerRadius: 28)
+                    .stroke(
+                        LinearGradient(
+                            gradient: Gradient(colors: [
+                                color.opacity(0.2),
+                                color.opacity(0.1),
+                                color.opacity(0.05)
+                            ]),
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        lineWidth: 2
+                    )
+            }
+            .shadow(color: color.opacity(0.12), radius: 20, x: 0, y: 8)
+            .shadow(color: color.opacity(0.06), radius: 40, x: 0, y: 20)
         )
     }
 }
@@ -225,6 +762,7 @@ struct FeatureBullet: View {
 // MARK: - Reader Preview (demo-only)
 
 struct ReaderPreview: View {
+    @Environment(\.dismiss) private var dismiss
     @State private var highlightIndex = 0
     private let lines = [
         "Spatial reading with dynamic line highlight.",
@@ -234,37 +772,103 @@ struct ReaderPreview: View {
     ]
 
     var body: some View {
-        VStack(spacing: 18) {
-            Text("Reading Preview")
-                .font(.title3.weight(.semibold))
+        NavigationView {
+            VStack(spacing: 24) {
+                // Header
+                VStack(spacing: 12) {
+                    Text("Reading Preview")
+                        .font(.title.weight(.bold))
+                        .foregroundColor(.primary)
+                    
+                    Text("Experience ReadAR's intelligent highlighting")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                        .multilineTextAlignment(.center)
+                }
+                .padding(.top, 20)
 
-            VStack(alignment: .leading, spacing: 10) {
-                ForEach(lines.indices, id: \.self) { i in
-                    Text(lines[i])
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.vertical, 10)
-                        .padding(.horizontal, 12)
-                        .background(
-                            RoundedRectangle(cornerRadius: 10)
-                                .fill(i == highlightIndex ? Color.yellow.opacity(0.28) : .clear)
-                        )
-                        .onTapGesture { highlightIndex = i }
+                // Enhanced reading area
+                VStack(alignment: .leading, spacing: 14) {
+                    ForEach(lines.indices, id: \.self) { i in
+                        Text(lines[i])
+                            .font(.title3.weight(.medium))
+                            .foregroundColor(.primary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.vertical, 16)
+                            .padding(.horizontal, 20)
+                            .background(
+                                RoundedRectangle(cornerRadius: 16)
+                                    .fill(
+                                        i == highlightIndex 
+                                        ? LinearGradient(
+                                            gradient: Gradient(colors: [
+                                                .yellow.opacity(0.15),
+                                                .orange.opacity(0.1)
+                                            ]),
+                                            startPoint: .leading,
+                                            endPoint: .trailing
+                                        )
+                                        : LinearGradient(
+                                            gradient: Gradient(colors: [
+                                                .clear,
+                                                .clear
+                                            ]),
+                                            startPoint: .leading,
+                                            endPoint: .trailing
+                                        )
+                                    )
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 16)
+                                            .stroke(
+                                                i == highlightIndex 
+                                                ? .yellow.opacity(0.3)
+                                                : .gray.opacity(0.1),
+                                                lineWidth: i == highlightIndex ? 2 : 1
+                                            )
+                                    )
+                            )
+                            .scaleEffect(i == highlightIndex ? 1.02 : 1.0)
+                            .animation(.easeInOut(duration: 0.2), value: highlightIndex)
+                            .onTapGesture { 
+                                withAnimation(.easeInOut(duration: 0.3)) {
+                                    highlightIndex = i 
+                                }
+                            }
+                    }
+                }
+                .padding(.horizontal, 24)
+                .padding(.vertical, 20)
+                .background(
+                    RoundedRectangle(cornerRadius: 24)
+                        .fill(.ultraThinMaterial)
+                        .shadow(color: .black.opacity(0.05), radius: 20, x: 0, y: 10)
+                )
+                .padding(.horizontal, 20)
+
+                Spacer()
+                
+                // Instructions
+                Text("Tap any line to highlight and focus")
+                    .font(.callout)
+                    .foregroundColor(.secondary)
+                    .padding(.bottom, 20)
+            }
+            .navigationTitle("")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Done") {
+                        dismiss()
+                    }
+                    .font(.headline)
+                    .foregroundColor(.indigo)
                 }
             }
-            .padding(16)
-            .background(
-                RoundedRectangle(cornerRadius: 18)
-                    .fill(Color.white.opacity(0.9))
-            )
-            .padding(.horizontal)
-
-            Spacer()
         }
-        .padding()
     }
 }
 
-// MARK: - Eye Glyph (2D fallback pieces)
+// MARK: - Eye Glyph (vector icon)
 
 struct EyeGlyph: View {
     var body: some View {
@@ -289,84 +893,3 @@ struct EyeOutline: Shape {
         return p
     }
 }
-
-// MARK: - Reality Header (3D eye on visionOS, fallback elsewhere)
-
-#if os(visionOS)
-struct RealityHeader: View {
-    var body: some View {
-        RealityView { content in
-            let root = Entity()
-            content.add(root)
-
-            // Plate
-            let plateMesh = MeshResource.generateBox(size: [0.12, 0.012, 0.12], cornerRadius: 0.02)
-            let plateMat = SimpleMaterial(color: .init(white: 0.95, alpha: 1), roughness: 0.4, isMetallic: false)
-            let plate = ModelEntity(mesh: plateMesh, materials: [plateMat])
-            root.addChild(plate)
-
-            // Eye ring
-            let ring = ModelEntity(
-                mesh: .generateTorus(ringRadius: 0.035, pipeRadius: 0.0025, radialSegments: 40, tubularSegments: 80),
-                materials: [SimpleMaterial(color: .systemIndigo, isMetallic: true)]
-            )
-            ring.position = [0, 0.01, 0]
-            root.addChild(ring)
-
-            // Pupil
-            let pupil = ModelEntity(
-                mesh: .generateSphere(radius: 0.012),
-                materials: [SimpleMaterial(color: .white, isMetallic: true)]
-            )
-            pupil.position = [0, 0.012, 0]
-            root.addChild(pupil)
-
-            // Light
-            let light = Entity()
-            var directional = DirectionalLightComponent()
-            directional.intensity = 4000
-            light.components.set(directional)
-            light.orientation = simd_quatf(angle: -.pi/4, axis: SIMD3<Float>(1,0,0))
-            root.addChild(light)
-
-            // Animation
-            let duration: TimeInterval = 6
-            let axis = SIMD3<Float>(0, 1, 0)
-            let totalAngle: Float = .pi * 2
-            let animation = FromToByAnimation<simd_quatf>(
-                name: "ringSpin",
-                from: simd_quatf(angle: 0, axis: axis),
-                to: simd_quatf(angle: totalAngle, axis: axis),
-                duration: duration,
-                timing: .easeInOutPaced,
-                bindTarget: .transformRotation(ring)
-            )
-            if let resource = try? AnimationResource.generate(with: animation) {
-                ring.playAnimation(resource, transitionDuration: 0.3, repeats: true)
-            }
-        }
-        .clipShape(RoundedRectangle(cornerRadius: 22))
-        .shadow(color: .purple.opacity(0.25), radius: 22, x: 0, y: 10)
-        .accessibilityLabel("ReadAR 3D Eye")
-    }
-}
-#else
-struct RealityHeader: View {
-    var body: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 22)
-                .fill(LinearGradient(
-                    gradient: Gradient(colors: [.indigo, .purple, .pink]),
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                ))
-                .shadow(color: .purple.opacity(0.25), radius: 22, x: 0, y: 10)
-
-            EyeGlyph()
-                .frame(width: 36, height: 36)
-                .foregroundColor(.white)
-                .shadow(radius: 2)
-        }
-    }
-}
-#endif
