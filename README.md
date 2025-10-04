@@ -26,7 +26,7 @@ The app communicates with a backend service that exposes simple REST APIs to def
 ## 🧩 Project Architecture
 
 📦 Hackharvard-2025-main/
-|----------|-------------|
+
 ├── backend.js # Express backend server
 ├── package.json # Backend dependencies & scripts
 ├── key.env # Example environment variable file
