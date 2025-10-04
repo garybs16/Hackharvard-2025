@@ -23,18 +23,19 @@ The app communicates with a backend service that exposes simple REST APIs to def
 
 ---
 
-## 🧩 Project Architecture
+## 📂 Project Architecture
 
-📦 Hackharvard-2025-main/
-
-├── backend.js # Express backend server
-├── package.json # Backend dependencies & scripts
-├── key.env # Example environment variable file
+```text
+Hackharvard-2025-main/
+├── backend.js                # Express backend server
+├── package.json              # Backend dependencies & scripts
+├── key.env                   # Example environment variable file
 │
-├── ReadApp.swift # SwiftUI entry point (main app)
-├── ReadARDataModels.swift # Codable models for API responses
+├── ReadApp.swift             # SwiftUI entry point (main app)
+├── ReadARDataModels.swift    # Codable models for API responses
 ├── ReadARNetworkClient.swift # Networking layer for API calls
-├── ReadARUIExtensions.swift # UI helper extensions (e.g., Color hex)
-├── PDFViewer.swift # PDFKit-based PDF viewer component
+├── ReadARUIExtensions.swift  # UI helper extensions (e.g., Color hex)
+├── PDFViewer.swift           # PDFKit-based PDF viewer component
 │
-└── README.md # You're reading this!
+└── README.md                 # You're reading this!
+
