@@ -1,32 +1,42 @@
 import SwiftUI
 import PDFKit
 
-// PDFViewer.swift
-// A reusable SwiftUI wrapper for displaying PDFs
-
-struct PDFViewer: View {
+public struct PDFViewer: View {
     let data: Data
-
-    var body: some View {
-        PDFKitView(data: data)
-            .ignoresSafeArea()
-    }
+    public init(data: Data) { self.data = data }
+    public var body: some View { PDFKitView(data: data).ignoresSafeArea() }
 }
 
-// MARK: - UIKit wrapper (for iOS / visionOS)
+#if os(macOS)
+import AppKit
+struct PDFKitView: NSViewRepresentable {
+    let data: Data
+    func makeNSView(context: Context) -> PDFView {
+        let v = PDFView()
+        v.autoScales = true
+        v.displayMode = .singlePageContinuous
+        v.displayDirection = .vertical
+        v.document = PDFDocument(data: data)
+        return v
+    }
+    func updateNSView(_ v: PDFView, context: Context) {
+        v.document = PDFDocument(data: data)
+    }
+}
+#else
+import UIKit
 struct PDFKitView: UIViewRepresentable {
     let data: Data
-
     func makeUIView(context: Context) -> PDFView {
-        let pdfView = PDFView()
-        pdfView.autoScales = true
-        pdfView.displayMode = .singlePageContinuous
-        pdfView.displayDirection = .vertical
-        pdfView.document = PDFDocument(data: data)
-        return pdfView
+        let v = PDFView()
+        v.autoScales = true
+        v.displayMode = .singlePageContinuous
+        v.displayDirection = .vertical
+        v.document = PDFDocument(data: data)
+        return v
     }
-
-    func updateUIView(_ pdfView: PDFView, context: Context) {
-        pdfView.document = PDFDocument(data: data)
+    func updateUIView(_ v: PDFView, context: Context) {
+        v.document = PDFDocument(data: data)
     }
 }
+#endif
