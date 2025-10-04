@@ -1,4 +1,5 @@
 import SwiftUI
+import Foundation
 
 #if os(visionOS)
 import RealityKit
@@ -17,12 +18,15 @@ struct ReadARLandingApp: App {
 
 struct LandingScreen: View {
     @State private var showPreview = false
+    @State private var backendOnline = false
+    @State private var apiFeatures: [Feature] = []       // Feature is defined in ReadARDataModels.swift
+    @State private var sampleDefinition: String = ""
 
     var body: some View {
         ScrollView {
             VStack(spacing: 24) {
 
-                // 3D Icon (RealityKit on visionOS) with 2D fallback elsewhere
+                // RealityKit (visionOS) with 2D fallback elsewhere
                 RealityHeader()
                     .frame(width: 120, height: 120)
                     .padding(.top, 12)
@@ -39,6 +43,11 @@ struct LandingScreen: View {
                         .multilineTextAlignment(.center)
                 }
 
+                // Backend status
+                Text(backendOnline ? "Backend: Online" : "Backend: Offline")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(backendOnline ? .green : .red)
+
                 // Badges
                 HStack(spacing: 12) {
                     PillBadge(color: .indigo, label: "Dyslexia", symbol: "brain.head.profile")
@@ -46,8 +55,21 @@ struct LandingScreen: View {
                     PillBadge(color: .green, label: "AI-Powered", symbol: "sparkles")
                 }
 
-                // Features
-                FeatureCardVisual()
+                // Features (API-driven if available; otherwise static fallback)
+                if apiFeatures.isEmpty {
+                    FeatureCardVisual() // static local list
+                } else {
+                    FeatureCardFromAPI(items: apiFeatures) // dynamic from backend
+                }
+
+                // Sample definition from /api/define
+                if !sampleDefinition.isEmpty {
+                    Text("“focus” → \(sampleDefinition)")
+                        .font(.footnote)
+                        .foregroundColor(.secondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal)
+                }
 
                 // CTA Button
                 Button(action: { showPreview = true }) {
@@ -88,95 +110,16 @@ struct LandingScreen: View {
             )
             .ignoresSafeArea()
         )
-    }
-}
+        .task {
+            // For real device testing (Vision Pro), point to your Mac's LAN IP:
+            // ReadARAPI.baseURL = URL(string: "http://192.168.1.23:5055")!
 
-// MARK: - Reality Header (3D Eye Badge)
-
-// visionOS: show a simple RealityKit scene
-#if os(visionOS)
-struct RealityHeader: View {
-    var body: some View {
-        RealityView { content in
-            // Root
-            let root = Entity()
-            content.add(root)
-
-            // Background rounded plate (like your gradient card, simplified)
-            let plateMesh = MeshResource.generateBox(size: [0.12, 0.012, 0.12], cornerRadius: 0.02)
-            let plateMat = SimpleMaterial(color: .init(white: 0.95, alpha: 1), roughness: 0.4, isMetallic: false)
-            let plate = ModelEntity(mesh: plateMesh, materials: [plateMat])
-            plate.position = [0, 0, 0]
-            root.addChild(plate)
-
-            // Eye outline (torus)
-            let ring = ModelEntity(
-                mesh: .generateTorus(ringRadius: 0.035, pipeRadius: 0.0025, radialSegments: 40, tubularSegments: 80),
-                materials: [SimpleMaterial(color: .systemIndigo, isMetallic: true)]
-            )
-            ring.position = [0, 0.01, 0]
-            root.addChild(ring)
-
-            // Pupil (small sphere)
-            let pupil = ModelEntity(
-                mesh: .generateSphere(radius: 0.012),
-                materials: [SimpleMaterial(color: .white, isMetallic: true)]
-            )
-            pupil.position = [0, 0.012, 0]
-            root.addChild(pupil)
-
-            // Simple light rig
-            let lightEntity = Entity()
-            var directional = DirectionalLightComponent()
-            directional.intensity = 4000
-            directional.isRealWorldProxy = false
-            lightEntity.components.set(directional)
-            lightEntity.orientation = simd_quatf(angle: -.pi/4, axis: SIMD3<Float>(1,0,0))
-            root.addChild(lightEntity)
-
-            // Subtle rotation animation (non-blocking)
-            // Rotation around Y so it feels alive.
-            let duration: TimeInterval = 6
-            let axis = SIMD3<Float>(0, 1, 0)
-            let totalAngle: Float = .pi * 2
-            let animation = FromToByAnimation<simd_quatf>(
-                name: "ringSpin",
-                from: simd_quatf(angle: 0, axis: axis),
-                to: simd_quatf(angle: totalAngle, axis: axis),
-                duration: duration,
-                timing: .easeInOutPaced,
-                bindTarget: .transformRotation(ring)
-            )
-            if let resource = try? AnimationResource.generate(with: animation) {
-                ring.playAnimation(resource, transitionDuration: 0.3, repeats: true)
-            }
-        }
-        .clipShape(RoundedRectangle(cornerRadius: 22))
-        .shadow(color: .purple.opacity(0.25), radius: 22, x: 0, y: 10)
-        .accessibilityLabel("ReadAR 3D Eye")
-    }
-}
-#else
-// Non-visionOS fallback: keep your original 2D icon
-struct RealityHeader: View {
-    var body: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 22)
-                .fill(LinearGradient(
-                    gradient: Gradient(colors: [.indigo, .purple, .pink]),
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                ))
-                .shadow(color: .purple.opacity(0.25), radius: 22, x: 0, y: 10)
-
-            EyeGlyph()
-                .frame(width: 36, height: 36)
-                .foregroundColor(.white)
-                .shadow(radius: 2)
+            backendOnline = await ReadARAPI.health()
+            apiFeatures = await ReadARAPI.features()
+            sampleDefinition = await ReadARAPI.define("focus")
         }
     }
 }
-#endif
 
 // MARK: - Components
 
@@ -218,6 +161,29 @@ struct FeatureCardVisual: View {
             VStack(spacing: 14) {
                 ForEach(items.indices, id: \.self) { i in
                     FeatureBullet(color: items[i].0, title: items[i].1, subtitle: items[i].2)
+                }
+            }
+        }
+        .padding(20)
+        .background(
+            RoundedRectangle(cornerRadius: 22)
+                .fill(Color(.systemBackground).opacity(0.8))
+                .shadow(color: .black.opacity(0.06), radius: 20, x: 0, y: 10)
+        )
+    }
+}
+
+// Dynamic card using API features (hex color requires Color(hex:) in ReadARUIExtensions.swift)
+struct FeatureCardFromAPI: View {
+    let items: [Feature]
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Key Features (API):")
+                .font(.headline)
+
+            VStack(spacing: 14) {
+                ForEach(Array(items.enumerated()), id: \.offset) { _, item in
+                    FeatureBullet(color: Color(hex: item.color), title: item.title, subtitle: item.subtitle)
                 }
             }
         }
@@ -298,7 +264,7 @@ struct ReaderPreview: View {
     }
 }
 
-// MARK: - Eye Glyph (vector icon)
+// MARK: - Eye Glyph (2D fallback pieces)
 
 struct EyeGlyph: View {
     var body: some View {
@@ -323,3 +289,84 @@ struct EyeOutline: Shape {
         return p
     }
 }
+
+// MARK: - Reality Header (3D eye on visionOS, fallback elsewhere)
+
+#if os(visionOS)
+struct RealityHeader: View {
+    var body: some View {
+        RealityView { content in
+            let root = Entity()
+            content.add(root)
+
+            // Plate
+            let plateMesh = MeshResource.generateBox(size: [0.12, 0.012, 0.12], cornerRadius: 0.02)
+            let plateMat = SimpleMaterial(color: .init(white: 0.95, alpha: 1), roughness: 0.4, isMetallic: false)
+            let plate = ModelEntity(mesh: plateMesh, materials: [plateMat])
+            root.addChild(plate)
+
+            // Eye ring
+            let ring = ModelEntity(
+                mesh: .generateTorus(ringRadius: 0.035, pipeRadius: 0.0025, radialSegments: 40, tubularSegments: 80),
+                materials: [SimpleMaterial(color: .systemIndigo, isMetallic: true)]
+            )
+            ring.position = [0, 0.01, 0]
+            root.addChild(ring)
+
+            // Pupil
+            let pupil = ModelEntity(
+                mesh: .generateSphere(radius: 0.012),
+                materials: [SimpleMaterial(color: .white, isMetallic: true)]
+            )
+            pupil.position = [0, 0.012, 0]
+            root.addChild(pupil)
+
+            // Light
+            let light = Entity()
+            var directional = DirectionalLightComponent()
+            directional.intensity = 4000
+            light.components.set(directional)
+            light.orientation = simd_quatf(angle: -.pi/4, axis: SIMD3<Float>(1,0,0))
+            root.addChild(light)
+
+            // Animation
+            let duration: TimeInterval = 6
+            let axis = SIMD3<Float>(0, 1, 0)
+            let totalAngle: Float = .pi * 2
+            let animation = FromToByAnimation<simd_quatf>(
+                name: "ringSpin",
+                from: simd_quatf(angle: 0, axis: axis),
+                to: simd_quatf(angle: totalAngle, axis: axis),
+                duration: duration,
+                timing: .easeInOutPaced,
+                bindTarget: .transformRotation(ring)
+            )
+            if let resource = try? AnimationResource.generate(with: animation) {
+                ring.playAnimation(resource, transitionDuration: 0.3, repeats: true)
+            }
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 22))
+        .shadow(color: .purple.opacity(0.25), radius: 22, x: 0, y: 10)
+        .accessibilityLabel("ReadAR 3D Eye")
+    }
+}
+#else
+struct RealityHeader: View {
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 22)
+                .fill(LinearGradient(
+                    gradient: Gradient(colors: [.indigo, .purple, .pink]),
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                ))
+                .shadow(color: .purple.opacity(0.25), radius: 22, x: 0, y: 10)
+
+            EyeGlyph()
+                .frame(width: 36, height: 36)
+                .foregroundColor(.white)
+                .shadow(radius: 2)
+        }
+    }
+}
+#endif
