@@ -1,75 +1,129 @@
-// ReaderView.swift
-import SwiftUI
-import PDFKit
+// VoiceAssistant.swift
+import Foundation
 import AVFoundation
 import Speech
 
-struct ReaderView: View {
-    let document: PDFDocument
-    @StateObject private var voice = VoiceAssistant.shared
-    @State private var selectedText: String = ""
-    @State private var isListening = false
-    
-    var body: some View {
-        VStack(spacing: 0) {
-            PDFSelectableView(document: document, onParagraphPicked: { text in
-                selectedText = text
-                voice.read(text)
-            })
-            .ignoresSafeArea()
+final class VoiceAssistant: NSObject, ObservableObject {
+    static let shared = VoiceAssistant()
 
-            // Compact control bar
-            if !selectedText.isEmpty || voice.isSpeaking {
-                ControlBar(
-                    selectedText: selectedText,
-                    isSpeaking: voice.isSpeaking,
-                    onPlayPause: { voice.toggle() },
-                    onStop: { voice.stop() },
-                    onPrev: { voice.readPreviousParagraph() },
-                    onNext: { voice.readNextParagraph() },
-                    onMic: {
-                        isListening.toggle()
-                        isListening ? voice.startListening() : voice.stopListening()
-                    },
-                    isListening: isListening
-                )
+    @Published var isSpeaking = false
+
+    private let synth = AVSpeechSynthesizer()
+    private var queue: [String] = []   // optional: future use for next/prev
+    private var currentIndex: Int = -1
+
+    // ASR (voice commands)
+    private let recognizer = SFSpeechRecognizer()
+    private var audioEngine: AVAudioEngine?
+    private var request: SFSpeechAudioBufferRecognitionRequest?
+    private var task: SFSpeechRecognitionTask?
+
+    private override init() {
+        super.init()
+        synth.delegate = self
+        try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .spokenAudio, options: [.duckOthers])
+    }
+
+    // MARK: - TTS controls
+    func read(_ text: String) {
+        stop()
+        queue = [text]
+        currentIndex = 0
+
+        let utt = AVSpeechUtterance(string: text)
+        // pick a sensible default; you can expose these later in UI
+        utt.voice = AVSpeechSynthesisVoice(language: Locale.current.identifier) // e.g. "en-US"
+        utt.rate  = AVSpeechUtteranceDefaultSpeechRate * 0.9
+        synth.speak(utt)
+        isSpeaking = true
+    }
+
+    func readNextParagraph() {
+        guard currentIndex + 1 < queue.count else { return }
+        currentIndex += 1
+        read(queue[currentIndex])
+    }
+
+    func readPreviousParagraph() {
+        guard currentIndex - 1 >= 0 else { return }
+        currentIndex -= 1
+        read(queue[currentIndex])
+    }
+
+    func toggle() {
+        if synth.isSpeaking {
+            synth.pauseSpeaking(at: .immediate)
+            isSpeaking = false
+        } else if synth.isPaused {
+            synth.continueSpeaking()
+            isSpeaking = true
+        }
+    }
+
+    func stop() {
+        if synth.isSpeaking || synth.isPaused {
+            synth.stopSpeaking(at: .immediate)
+        }
+        isSpeaking = false
+    }
+
+    // MARK: - Voice commands (pause/resume/next/previous/stop)
+    func startListening() {
+        SFSpeechRecognizer.requestAuthorization { status in
+            guard status == .authorized else { return }
+            DispatchQueue.main.async { self.beginRecognition() }
+        }
+    }
+
+    func stopListening() {
+        audioEngine?.stop()
+        request?.endAudio()
+        task?.cancel()
+        audioEngine = nil
+        request = nil
+        task = nil
+    }
+
+    private func beginRecognition() {
+        let engine = AVAudioEngine()
+        audioEngine = engine
+        let req = SFSpeechAudioBufferRecognitionRequest()
+        request = req
+        req.shouldReportPartialResults = true
+
+        guard let input = engine.inputNode else { return }
+        let format = input.outputFormat(forBus: 0)
+        input.installTap(onBus: 0, bufferSize: 1024, format: format) { [weak self] buffer, _ in
+            self?.request?.append(buffer)
+        }
+
+        task = recognizer?.recognitionTask(with: req) { [weak self] result, error in
+            guard let self else { return }
+            if let t = result?.bestTranscription.formattedString.lowercased() {
+                self.handleCommand(t)
             }
+            if error != nil || (result?.isFinal ?? false) {
+                self.stopListening()
+            }
+        }
+
+        engine.prepare()
+        try? engine.start()
+    }
+
+    private func handleCommand(_ text: String) {
+        switch true {
+        case text.contains("pause"): toggle()
+        case text.contains("resume") || text.contains("continue"): toggle()
+        case text.contains("stop"): stop()
+        case text.contains("next"): readNextParagraph()
+        case text.contains("previous") || text.contains("back"): readPreviousParagraph()
+        default: break
         }
     }
 }
 
-// Simple controls
-private struct ControlBar: View {
-    let selectedText: String
-    let isSpeaking: Bool
-    let onPlayPause: () -> Void
-    let onStop: () -> Void
-    let onPrev: () -> Void
-    let onNext: () -> Void
-    let onMic: () -> Void
-    let isListening: Bool
-    
-    var body: some View {
-        VStack(spacing: 8) {
-            Text(selectedText)
-                .font(.callout)
-                .foregroundColor(.secondary)
-                .lineLimit(2)
-                .padding(.horizontal)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            
-            HStack(spacing: 18) {
-                Button(action: onPrev) { Image(systemName: "backward.end.alt") }
-                Button(action: onPlayPause) { Image(systemName: isSpeaking ? "pause.fill" : "play.fill") }
-                Button(action: onStop) { Image(systemName: "stop.fill") }
-                Button(action: onNext) { Image(systemName: "forward.end.alt") }
-                Spacer()
-                Button(action: onMic) { Image(systemName: isListening ? "mic.fill" : "mic") }
-            }
-            .font(.title3.weight(.semibold))
-            .padding(.horizontal, 16)
-            .padding(.vertical, 10)
-            .background(.ultraThinMaterial)
-        }
-    }
+extension VoiceAssistant: AVSpeechSynthesizerDelegate {
+    func speechSynthesizer(_ s: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) { isSpeaking = false }
+    func speechSynthesizer(_ s: AVSpeechSynthesizer, didCancel utterance: AVSpeechUtterance) { isSpeaking = false }
 }
