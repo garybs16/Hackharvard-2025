@@ -27,7 +27,7 @@ struct LandingScreen: View {
                             endPoint: .bottomTrailing
                         ))
                         .frame(width: 92, height: 92)
-                        .shadow(color: .purple.opacity(0.25), radius: 22, y: 10)
+                        .shadow(color: .purple.opacity(0.25), radius: 22, x: 0, y: 10) // fixed: add x
 
                     EyeGlyph()
                         .frame(width: 36, height: 36)
@@ -79,7 +79,7 @@ struct LandingScreen: View {
                                 endPoint: .bottomTrailing
                             )
                         )
-                        .shadow(color: .purple.opacity(0.25), radius: 14, y: 8)
+                        .shadow(color: .purple.opacity(0.25), radius: 14, x: 0, y: 8) // fixed: add x
                     )
                 }
                 .sheet(isPresented: $showPreview) {
@@ -142,7 +142,7 @@ struct FeatureCardVisual: View {
                 .font(.headline)
 
             VStack(spacing: 14) {
-                ForEach(0..<items.count, id: \.self) { i in
+                ForEach(items.indices, id: \.self) { i in
                     FeatureBullet(color: items[i].0, title: items[i].1, subtitle: items[i].2)
                 }
             }
@@ -151,7 +151,7 @@ struct FeatureCardVisual: View {
         .background(
             RoundedRectangle(cornerRadius: 22)
                 .fill(Color(.systemBackground).opacity(0.8))
-                .shadow(color: .black.opacity(0.06), radius: 20, y: 10)
+                .shadow(color: .black.opacity(0.06), radius: 20, x: 0, y: 10) // fixed: add x
         )
     }
 }
@@ -199,7 +199,7 @@ struct ReaderPreview: View {
                 .font(.title3.weight(.semibold))
 
             VStack(alignment: .leading, spacing: 10) {
-                ForEach(0..<lines.count, id: \.self) { i in
+                ForEach(lines.indices, id: \.self) { i in
                     Text(lines[i])
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.vertical, 10)
